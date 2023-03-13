@@ -52,7 +52,6 @@ name = "chatgpt-rs"
 version = "0.1.0"
 dependencies = [
  "dotenv",
- "gpt-macro",
  "hyper",
  "hyper-proxy",
  "hyper-tls",
@@ -261,23 +260,6 @@ checksum = "bff49e947297f3312447abdca79f45f4738097cc82b06e72054d2223f601f1b9"
 dependencies = [
  "typenum",
  "version_check",
-]
-
-[[package]]
-name = "gpt-macro"
-version = "0.1.0"
-source = "git+https://github.com/LitangDingzhen/gpt-macro.git#bdba6d0466bf2e1667df79b63c5300c3be0a3e48"
-dependencies = [
- "dotenv",
- "hyper",
- "hyper-proxy",
- "hyper-tls",
- "proc-macro2",
- "quote",
- "serde",
- "serde_json",
- "syn",
- "tokio",
 ]
 
 [[package]]

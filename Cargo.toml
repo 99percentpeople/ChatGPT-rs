@@ -5,7 +5,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-gpt-macro = { git = "https://github.com/LitangDingzhen/gpt-macro.git" }
 dotenv = "0.15.0"
 hyper = { version = "0.14", features = ["full"] }
 hyper-tls = "0.5"

@@ -38,6 +38,7 @@ struct Chat {
     /// ID of the model to use. Currently, only `gpt-3.5-turbo` and `gpt-3.5-turbo-0301` are supported.
     model: String,
     /// `array` `Required`
+    ///
     /// The messages to generate chat completions for, in the chat format.
     messages: Vec<ChatMessage>,
     temperature: Option<f32>,
@@ -46,6 +47,8 @@ struct Chat {
     /// So 0.1 means only the tokens comprising the top 10% probability mass are considered.
     /// We generally recommend altering this or temperature but not both.
     top_p: Option<f32>,
+    /// `number` `Optional` `Defaults to 1`
+    ///
     /// How many chat completion choices to generate for each input message.
     n: Option<u32>,
     /// `boolean` `Optional` `Defaults to false`
@@ -54,6 +57,26 @@ struct Chat {
     /// Tokens will be sent as data-only server-sent events as they become available,
     /// with the stream terminated by a data: [DONE] message.
     stream: Option<bool>,
+    /// `string or array` `Optional` `Defaults to null`
+    ///
+    /// Up to 4 sequences where the API will stop generating further tokens.
+    stop: Option<Vec<String>>,
+    /// `integer` `Optional` `Defaults to inf`
+    /// The maximum number of tokens allowed for the generated answer.
+    /// By default, the number of tokens the model can return will be (4096 - prompt tokens).
+    max_tokens: Option<u32>,
+    /// `number` `Optional` `Defaults to 0`
+    ///
+    /// Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far,
+    /// increasing the model's likelihood to talk about new topics.
+    presence_penalty: Option<f32>,
+    /// `number` `Optional` `Defaults to 0`
+    ///
+    /// Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far,
+    /// decreasing the model's likelihood to repeat the same line verbatim.
+    frequency_penalty: Option<f32>,
+    best_of: Option<u32>,
+    user: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -159,6 +182,12 @@ impl ChatGPT {
                 top_p: None,
                 n: None,
                 stream: Some(true),
+                stop: None,
+                max_tokens: None,
+                presence_penalty: None,
+                frequency_penalty: None,
+                best_of: None,
+                user: None,
             })),
             client: Arc::new(MultiClient::new()),
         }
