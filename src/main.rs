@@ -41,6 +41,11 @@ struct Chat {
     ///
     /// The messages to generate chat completions for, in the chat format.
     messages: Vec<ChatMessage>,
+    /// `number` `Optional` `Defaults to 1`
+    ///
+    /// What sampling temperature to use, between 0 and 2.
+    /// Higher values like 0.8 will make the output more random,
+    /// while lower values like 0.2 will make it more focused and deterministic.
     temperature: Option<f32>,
     /// An alternative to sampling with temperature, called nucleus sampling,
     /// where the model considers the results of the tokens with top_p probability mass.
@@ -75,8 +80,6 @@ struct Chat {
     /// Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far,
     /// decreasing the model's likelihood to repeat the same line verbatim.
     frequency_penalty: Option<f32>,
-    best_of: Option<u32>,
-    user: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -178,16 +181,14 @@ impl ChatGPT {
             chat: Arc::new(Mutex::new(Chat {
                 model: Self::MODEL.to_string(),
                 messages: Vec::new(),
-                temperature: None,
-                top_p: None,
-                n: None,
+                temperature: Some(1.),
+                top_p: Some(1.),
+                n: Some(1),
                 stream: Some(true),
                 stop: None,
-                max_tokens: None,
-                presence_penalty: None,
-                frequency_penalty: None,
-                best_of: None,
-                user: None,
+                max_tokens: Some(2048),
+                presence_penalty: Some(0.),
+                frequency_penalty: Some(0.),
             })),
             client: Arc::new(MultiClient::new()),
         }
