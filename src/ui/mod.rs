@@ -99,25 +99,6 @@ impl eframe::App for ChatApp {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.heading(chat.model);
         });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.vertical(|ui| {
-                    for message in chat.messages {
-                        MessageContainer::from(&message).ui(ui);
-                    }
-                    if let Some(generate) = generate.clone() {
-                        ui.group(|ui| {
-                            if let Some(content) = generate.content {
-                                ui.label(content);
-                            } else {
-                                ui.spinner();
-                            }
-                        });
-                        ctx.request_repaint();
-                    }
-                });
-            });
-        });
 
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
@@ -155,6 +136,25 @@ impl eframe::App for ChatApp {
                 });
             });
         });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.vertical(|ui| {
+                    for message in chat.messages {
+                        message_container(ui, &message);
+                    }
+                    if let Some(generate) = generate.clone() {
+                        ui.group(|ui| {
+                            if let Some(content) = generate.content {
+                                ui.label(content);
+                            } else {
+                                ui.spinner();
+                            }
+                        });
+                        ctx.request_repaint();
+                    }
+                });
+            });
+        });
     }
 }
 
@@ -182,34 +182,18 @@ fn setup_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-pub struct MessageContainer<'a> {
-    pub role: &'a Role,
-    pub content: &'a String,
-}
-
-impl<'a> MessageContainer<'a> {
-    pub fn ui(&self, ui: &mut egui::Ui) {
-        ui.with_layout(
-            egui::Layout::top_down(match self.role {
-                Role::System => egui::Align::Center,
-                Role::User => egui::Align::RIGHT,
-                Role::Assistant => egui::Align::LEFT,
-            })
-            .with_main_wrap(true),
-            |ui| {
-                ui.group(|ui| {
-                    ui.label(self.content);
-                });
-            },
-        );
-    }
-}
-
-impl<'a> From<&'a ChatMessage> for MessageContainer<'a> {
-    fn from(message: &'a ChatMessage) -> Self {
-        Self {
-            role: &message.role,
-            content: &message.content,
-        }
-    }
+pub fn message_container(ui: &mut egui::Ui, message: &ChatMessage) {
+    ui.with_layout(
+        egui::Layout::top_down(match message.role {
+            Role::System => egui::Align::Center,
+            Role::User => egui::Align::RIGHT,
+            Role::Assistant => egui::Align::LEFT,
+        })
+        .with_main_wrap(true),
+        |ui| {
+            ui.group(|ui| {
+                ui.label(&message.content);
+            });
+        },
+    );
 }
