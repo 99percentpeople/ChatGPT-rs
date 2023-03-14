@@ -1,10 +1,8 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use api::chat::ChatGPT;
 use eframe::egui;
 use std::error::Error;
-use tokio::{
-    io::{self, AsyncBufReadExt},
-    signal::ctrl_c,
-};
 
 mod api;
 pub mod client;
