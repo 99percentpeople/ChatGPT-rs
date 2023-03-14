@@ -12,4 +12,13 @@ hyper-proxy = "0.9.1"
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-tokio-stream = "0.1.12"
+tokio-stream = "0.1"
+eframe = "0.21"
+tracing-subscriber = "0.3"
+log = "0.4"
+anyhow = "1.0.69"
+thiserror = "1.0.39"
+egui_extras = { version = "0.21.0", features = ["image"] }
+image = { version = "0.24", features = ["jpeg", "png"] }
+validator = { version = "0.16.0", features = ["derive"] }
+futures = "0.3.27"
