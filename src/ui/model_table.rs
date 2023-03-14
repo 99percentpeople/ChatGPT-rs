@@ -1,7 +1,4 @@
-use std::{
-    rc::Rc,
-    sync::{atomic, Arc},
-};
+use std::{rc::Rc, sync::atomic};
 
 use eframe::egui;
 use tokio::task::block_in_place;

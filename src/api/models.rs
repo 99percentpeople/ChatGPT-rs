@@ -1,17 +1,8 @@
-use std::{
-    collections::HashMap,
-    sync::{atomic, Arc},
-};
+use std::sync::{atomic, Arc};
 
-use eframe::egui;
-use hyper::{
-    body::{self, HttpBody},
-    header::AUTHORIZATION,
-    http::HeaderValue,
-    Body, Request,
-};
+use hyper::{body, header::AUTHORIZATION, http::HeaderValue, Body, Request};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::RwLock, task::block_in_place};
+use tokio::sync::RwLock;
 
 use crate::client::MultiClient;
 

@@ -2,15 +2,14 @@ use hyper::body::HttpBody;
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Request, Uri};
 use serde::{Deserialize, Serialize};
-use validator::Validate;
 
 use crate::client::MultiClient;
-use futures::{TryFuture, TryFutureExt, TryStreamExt};
+use futures::TryStreamExt;
 use std::ops::Not;
 use std::sync::{atomic, Arc};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_stream::{Stream, StreamExt};
+use tokio_stream::Stream;
 
 /// POST https://api.openai.com/v1/chat/completions
 ///
@@ -246,6 +245,9 @@ impl ChatGPT {
                                             pending_generate.role.replace(role.clone());
                                         }
                                         if let Some(content) = &message.content {
+                                            if content == "\n\n" {
+                                                continue;
+                                            }
                                             if let Some(old_content) =
                                                 pending_generate.content.as_mut()
                                             {

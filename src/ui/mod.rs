@@ -1,21 +1,16 @@
 mod model_table;
-use std::sync::atomic;
+use std::{sync::atomic, time::Duration};
 
-use crate::{
-    api::chat::{ChatGPT, ChatMessage, Role},
-    api::models::ModelsAPI,
-};
+use crate::api::chat::{ChatGPT, Role};
 use eframe::egui;
 
-use tokio::task::block_in_place;
-
 use self::model_table::ModelTable;
-
+use egui_notify::Toasts;
 pub struct ChatApp {
     chat: ChatGPT,
     text: String,
     model_table: model_table::ModelTable,
-
+    toasts: Toasts,
     max_tokens: u32,
     temperature: f32,
     top_p: f32,
@@ -36,6 +31,7 @@ impl ChatApp {
         Self {
             chat,
             text: String::new(),
+            toasts: Toasts::default(),
             model_table,
             max_tokens: 2048,
             temperature: 1.,
@@ -110,12 +106,12 @@ impl eframe::App for ChatApp {
                             .add_sized(egui::vec2(50., 40.), egui::Button::new("Send"))
                             .clicked()
                         {
-                            if !self.text.is_empty() {
-                                let text = self.text.clone();
+                            let input_text = self.text.trim().to_string();
+                            if !input_text.is_empty() {
                                 let mut chat = self.chat.clone();
                                 tokio::spawn(async move {
                                     chat.is_ready.store(false, atomic::Ordering::Relaxed);
-                                    if let Err(e) = chat.question(text).await {
+                                    if let Err(e) = chat.question(input_text).await {
                                         println!("Error sending message: {}", e);
                                     }
                                     chat.is_ready.store(true, atomic::Ordering::Relaxed);
@@ -140,21 +136,21 @@ impl eframe::App for ChatApp {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.vertical(|ui| {
                     for message in chat.messages {
-                        message_container(ui, &message);
+                        message_container(ui, &message.content, &message.role, &mut self.toasts);
                     }
-                    if let Some(generate) = generate.clone() {
-                        ui.group(|ui| {
-                            if let Some(content) = generate.content {
-                                ui.label(content);
-                            } else {
-                                ui.spinner();
-                            }
-                        });
+                    if let Some(generate) = generate.as_ref() {
+                        if let Some(content) = generate.content.as_ref() {
+                            message_container(ui, &content, &Role::Assistant, &mut self.toasts);
+                        } else {
+                            ui.spinner();
+                        }
+
                         ctx.request_repaint();
                     }
                 });
             });
         });
+        self.toasts.show(ctx);
     }
 }
 
@@ -182,9 +178,9 @@ fn setup_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-pub fn message_container(ui: &mut egui::Ui, message: &ChatMessage) {
+pub fn message_container(ui: &mut egui::Ui, content: &str, role: &Role, toasts: &mut Toasts) {
     ui.with_layout(
-        egui::Layout::top_down(match message.role {
+        egui::Layout::top_down(match role {
             Role::System => egui::Align::Center,
             Role::User => egui::Align::RIGHT,
             Role::Assistant => egui::Align::LEFT,
@@ -192,7 +188,16 @@ pub fn message_container(ui: &mut egui::Ui, message: &ChatMessage) {
         .with_main_wrap(true),
         |ui| {
             ui.group(|ui| {
-                ui.label(&message.content);
+                if ui
+                    .add(egui::Label::new(egui::RichText::new(content)).sense(egui::Sense::click()))
+                    .clicked()
+                {
+                    ui.output_mut(|o| o.copied_text = content.to_string());
+                    toasts
+                        .success("Copied")
+                        .set_closable(false)
+                        .set_duration(Some(Duration::from_secs(1)));
+                }
             });
         },
     );

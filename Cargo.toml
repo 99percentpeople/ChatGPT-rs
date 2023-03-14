@@ -22,3 +22,4 @@ egui_extras = { version = "0.21.0", features = ["image"] }
 image = { version = "0.24", features = ["jpeg", "png"] }
 validator = { version = "0.16.0", features = ["derive"] }
 futures = "0.3.27"
+egui-notify = "0.6.0"
