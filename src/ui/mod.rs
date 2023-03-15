@@ -1,9 +1,12 @@
 mod model_table;
 mod parameter_control;
-use std::{sync::atomic, time::Duration};
+use std::{
+    sync::{atomic, Arc},
+    time::Duration,
+};
 
 use crate::api::chat::{ChatGPT, Role};
-use eframe::egui::{self, InnerResponse};
+use eframe::egui;
 
 use self::{model_table::ModelTable, parameter_control::ParameterControl};
 use egui_notify::Toasts;
@@ -12,7 +15,7 @@ pub struct ChatApp {
     text: String,
     model_table: model_table::ModelTable,
     parameter_control: parameter_control::ParameterControl,
-
+    is_ready: Arc<atomic::AtomicBool>,
     toasts: Toasts,
 }
 impl ChatApp {
@@ -79,6 +82,7 @@ impl ChatApp {
             text: String::new(),
             toasts: Toasts::default(),
             model_table,
+            is_ready: Arc::new(atomic::AtomicBool::new(true)),
             parameter_control,
         }
     }
@@ -92,7 +96,7 @@ impl eframe::App for ChatApp {
             )
         });
 
-        let is_ready = self.chat.is_ready.load(atomic::Ordering::Relaxed);
+        let is_ready = self.is_ready.load(atomic::Ordering::Relaxed);
 
         egui::SidePanel::left("left_panel").show(ctx, |ui| {
             self.model_table.ui(ui);
@@ -117,12 +121,13 @@ impl eframe::App for ChatApp {
                             let input_text = self.text.trim().to_string();
                             if !input_text.is_empty() {
                                 let mut chat = self.chat.clone();
+                                let is_ready = self.is_ready.clone();
                                 tokio::spawn(async move {
-                                    chat.is_ready.store(false, atomic::Ordering::Relaxed);
+                                    is_ready.store(false, atomic::Ordering::Relaxed);
                                     if let Err(e) = chat.question(input_text).await {
                                         println!("Error sending message: {}", e);
                                     }
-                                    chat.is_ready.store(true, atomic::Ordering::Relaxed);
+                                    is_ready.store(true, atomic::Ordering::Relaxed);
                                 });
                                 self.text.clear();
                             }
@@ -148,16 +153,18 @@ impl eframe::App for ChatApp {
                             ui,
                             |ui| {
                                 let content = message.content.to_string();
-                                if ui
-                                    .add(egui::Label::new(&content).sense(egui::Sense::click()))
-                                    .clicked()
-                                {
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(&content))
+                                        .sense(egui::Sense::click()),
+                                )
+                                .clicked()
+                                .then(|| {
                                     ui.output_mut(|o| o.copied_text = content);
                                     self.toasts
                                         .success("Copied")
                                         .set_closable(false)
                                         .set_duration(Some(Duration::from_secs(1)));
-                                }
+                                });
                             },
                             &message.role,
                         );
@@ -168,10 +175,10 @@ impl eframe::App for ChatApp {
                                 ui,
                                 |ui| {
                                     if let Some(content) = generate.content.as_ref() {
-                                        ui.label(content);
+                                        ui.label(content)
                                     } else {
-                                        ui.spinner();
-                                    }
+                                        ui.spinner()
+                                    };
                                 },
                                 &Role::Assistant,
                             );
@@ -214,14 +221,22 @@ pub fn message_container<R>(
     ui: &mut egui::Ui,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
     role: &Role,
-) -> InnerResponse<R> {
-    ui.with_layout(
-        egui::Layout::top_down(match role {
-            Role::System => egui::Align::Center,
-            Role::User => egui::Align::RIGHT,
-            Role::Assistant => egui::Align::LEFT,
-        })
-        .with_main_wrap(true),
-        |ui| ui.group(|ui| add_contents(ui)).inner,
-    )
+) {
+    ui.horizontal(|ui| {
+        ui.with_layout(
+            match role {
+                Role::User => egui::Layout::right_to_left(egui::Align::Min).with_main_wrap(true),
+                Role::Assistant => {
+                    egui::Layout::left_to_right(egui::Align::Min).with_main_wrap(true)
+                }
+                Role::System => egui::Layout::centered_and_justified(egui::Direction::TopDown)
+                    .with_main_wrap(true),
+            },
+            |ui| {
+                ui.group(|ui| {
+                    add_contents(ui);
+                });
+            },
+        )
+    });
 }

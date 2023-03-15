@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::client::MultiClient;
 use futures::TryStreamExt;
 use std::ops::Not;
-use std::sync::{atomic, Arc};
+use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
@@ -108,7 +108,7 @@ pub struct ChatGPT {
     pub chat: Arc<RwLock<Chat>>,
     client: Arc<MultiClient>,
     api_key: String,
-    pub is_ready: Arc<atomic::AtomicBool>,
+
     pub pending_generate: Arc<RwLock<Option<ResponseChatMessage>>>,
 }
 
@@ -138,8 +138,7 @@ impl ChatGPT {
                 presence_penalty: Some(0.),
                 frequency_penalty: Some(0.),
             })),
-            api_key: api_key,
-            is_ready: Arc::new(atomic::AtomicBool::new(true)),
+            api_key,
             client: Arc::new(MultiClient::new()),
             pending_generate: Arc::new(RwLock::new(None)),
         }

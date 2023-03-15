@@ -84,8 +84,8 @@ impl ParameterControl {
                     }
                 });
                 ui.end_row();
-                ui.label("Temperature");
-                ui.add(egui::Slider::new(&mut self.temperature, 0.0..=1.0))
+                ui.add(doc_link_label("Temperature","temperature", "https://platform.openai.com/docs/api-reference/chat/create#chat/create-temperature"));
+                ui.add(egui::Slider::new(&mut self.temperature, 0.0..=2.0))
                     .changed()
                     .then(|| {
                         if let Some(call_back_fn) = &mut self.on_temperature_changed {
@@ -93,7 +93,8 @@ impl ParameterControl {
                         }
                     });
                 ui.end_row();
-                ui.label("Top P");
+                ui.add(doc_link_label("Top P", "top_p","https://platform.openai.com/docs/api-reference/chat/create#chat/create-top_p"));
+
                 ui.add(egui::Slider::new(&mut self.top_p, 0.0..=1.0))
                     .changed()
                     .then(|| {
@@ -103,7 +104,7 @@ impl ParameterControl {
                     });
 
                 ui.end_row();
-                ui.label("Presence Penalty");
+                ui.add(doc_link_label("Presence Penalty", "presence_penalty","https://platform.openai.com/docs/api-reference/chat/create#chat/create-presence_penalty"));
                 ui.add(egui::Slider::new(&mut self.presence_penalty, -2.0..=2.0))
                     .changed()
                     .then(|| {
@@ -113,7 +114,7 @@ impl ParameterControl {
                     });
 
                 ui.end_row();
-                ui.label("Frequency Penalty");
+                ui.add(doc_link_label("Frequency Penalty", "frequency_penalty","https://platform.openai.com/docs/api-reference/chat/create#chat/create-frequency_penalty"));
                 ui.add(egui::Slider::new(&mut self.frequency_penalty, -2.0..=2.0))
                     .changed()
                     .then(|| {
@@ -125,3 +126,33 @@ impl ParameterControl {
             });
     }
 }
+
+fn doc_link_label<'a>(title: &'a str, name: &'a str, url: &'a str) -> impl egui::Widget + 'a {
+    let label = format!("{}:", title);
+    move |ui: &mut egui::Ui| {
+        ui.hyperlink_to(label, url).on_hover_ui(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Search openai docs for");
+                ui.code(name);
+            });
+        })
+    }
+}
+
+// fn doc_link_label_with_checkbox<'a>(
+//     checked: &'a mut bool,
+//     title: &'a str,
+//     name: &'a str,
+//     url: &'a str,
+// ) -> impl egui::Widget + 'a {
+//     let label = format!("{}:", title);
+//     move |ui: &mut egui::Ui| {
+//         ui.checkbox(checked, egui::RichText::new(title))
+//             .on_hover_ui(|ui| {
+//                 ui.horizontal_wrapped(|ui| {
+//                     ui.label("Search egui docs for");
+//                     ui.code(name);
+//                 });
+//             })
+//     }
+// }
