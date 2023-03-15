@@ -1,43 +1,85 @@
 mod model_table;
+mod parameter_control;
 use std::{sync::atomic, time::Duration};
 
 use crate::api::chat::{ChatGPT, Role};
-use eframe::egui;
+use eframe::egui::{self, InnerResponse};
 
-use self::model_table::ModelTable;
+use self::{model_table::ModelTable, parameter_control::ParameterControl};
 use egui_notify::Toasts;
 pub struct ChatApp {
     chat: ChatGPT,
     text: String,
     model_table: model_table::ModelTable,
+    parameter_control: parameter_control::ParameterControl,
+
     toasts: Toasts,
-    max_tokens: u32,
-    temperature: f32,
-    top_p: f32,
-    presence_penalty: f32,
-    frequency_penalty: f32,
 }
 impl ChatApp {
     pub fn new_with_chat(cc: &eframe::CreationContext, chat: ChatGPT) -> Self {
         setup_fonts(&cc.egui_ctx);
         let mut model_table = ModelTable::default();
-        let chat1 = chat.clone();
-        model_table.on_select_model(move |model| {
-            let mut chat1 = chat1.clone();
-            tokio::spawn(async move {
-                chat1.set_model(model).await;
+        {
+            let chat = chat.clone();
+            model_table.on_select_model(move |model| {
+                let mut chat = chat.clone();
+                tokio::spawn(async move {
+                    chat.set_model(model).await;
+                });
             });
-        });
+        }
+        let mut parameter_control = ParameterControl::default();
+        {
+            let chat = chat.clone();
+            parameter_control.on_max_tokens_changed(move |max_tokens| {
+                let mut chat = chat.clone();
+                tokio::spawn(async move {
+                    chat.set_max_tokens(max_tokens).await;
+                });
+            });
+        }
+        {
+            let chat = chat.clone();
+            parameter_control.on_temperature_changed(move |temperature| {
+                let mut chat = chat.clone();
+                tokio::spawn(async move {
+                    chat.set_temperature(temperature).await;
+                });
+            });
+        }
+        {
+            let chat = chat.clone();
+            parameter_control.on_top_p_changed(move |top_p| {
+                let mut chat = chat.clone();
+                tokio::spawn(async move {
+                    chat.set_top_p(top_p).await;
+                });
+            });
+        }
+        {
+            let chat = chat.clone();
+            parameter_control.on_presence_penalty_changed(move |presence_penalty| {
+                let mut chat = chat.clone();
+                tokio::spawn(async move {
+                    chat.set_presence_penalty(presence_penalty).await;
+                });
+            });
+        }
+        {
+            let chat = chat.clone();
+            parameter_control.on_frequency_penalty_changed(move |frequency_penalty| {
+                let mut chat = chat.clone();
+                tokio::spawn(async move {
+                    chat.set_frequency_penalty(frequency_penalty).await;
+                });
+            });
+        }
         Self {
             chat,
             text: String::new(),
             toasts: Toasts::default(),
             model_table,
-            max_tokens: 2048,
-            temperature: 1.,
-            top_p: 1.,
-            presence_penalty: 0.,
-            frequency_penalty: 0.,
+            parameter_control,
         }
     }
 }
@@ -51,46 +93,12 @@ impl eframe::App for ChatApp {
         });
 
         let is_ready = self.chat.is_ready.load(atomic::Ordering::Relaxed);
-        if let Some(max_tokens) = chat.max_tokens {
-            self.max_tokens = max_tokens;
-        }
-        if let Some(temperature) = chat.temperature {
-            self.temperature = temperature;
-        }
-        if let Some(top_p) = chat.top_p {
-            self.top_p = top_p;
-        }
-        if let Some(presence_penalty) = chat.presence_penalty {
-            self.presence_penalty = presence_penalty;
-        }
-        if let Some(frequency_penalty) = chat.frequency_penalty {
-            self.frequency_penalty = frequency_penalty;
-        }
+
         egui::SidePanel::left("left_panel").show(ctx, |ui| {
             self.model_table.ui(ui);
         });
         egui::SidePanel::right("right_panel").show(ctx, |ui| {
-            egui::Grid::new("grid")
-                .num_columns(2)
-                .spacing([40.0, 4.0])
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.label("Max Tokens");
-                    ui.add(egui::Slider::new(&mut self.max_tokens, 1..=2048));
-                    ui.end_row();
-                    ui.label("Temperature");
-                    ui.add(egui::Slider::new(&mut self.temperature, 0.0..=1.0));
-                    ui.end_row();
-                    ui.label("Top P");
-                    ui.add(egui::Slider::new(&mut self.top_p, 0.0..=1.0));
-                    ui.end_row();
-                    ui.label("Presence Penalty");
-                    ui.add(egui::Slider::new(&mut self.presence_penalty, -2.0..=2.0));
-                    ui.end_row();
-                    ui.label("Frequency Penalty");
-                    ui.add(egui::Slider::new(&mut self.frequency_penalty, -2.0..=2.0));
-                    ui.end_row();
-                });
+            self.parameter_control.ui(ui);
         });
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.heading(chat.model);
@@ -136,13 +144,37 @@ impl eframe::App for ChatApp {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.vertical(|ui| {
                     for message in chat.messages {
-                        message_container(ui, &message.content, &message.role, &mut self.toasts);
+                        message_container(
+                            ui,
+                            |ui| {
+                                let content = message.content.to_string();
+                                if ui
+                                    .add(egui::Label::new(&content).sense(egui::Sense::click()))
+                                    .clicked()
+                                {
+                                    ui.output_mut(|o| o.copied_text = content);
+                                    self.toasts
+                                        .success("Copied")
+                                        .set_closable(false)
+                                        .set_duration(Some(Duration::from_secs(1)));
+                                }
+                            },
+                            &message.role,
+                        );
                     }
                     if let Some(generate) = generate.as_ref() {
-                        if let Some(content) = generate.content.as_ref() {
-                            message_container(ui, &content, &Role::Assistant, &mut self.toasts);
-                        } else {
-                            ui.spinner();
+                        {
+                            message_container(
+                                ui,
+                                |ui| {
+                                    if let Some(content) = generate.content.as_ref() {
+                                        ui.label(content);
+                                    } else {
+                                        ui.spinner();
+                                    }
+                                },
+                                &Role::Assistant,
+                            );
                         }
 
                         ctx.request_repaint();
@@ -178,7 +210,11 @@ fn setup_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-pub fn message_container(ui: &mut egui::Ui, content: &str, role: &Role, toasts: &mut Toasts) {
+pub fn message_container<R>(
+    ui: &mut egui::Ui,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+    role: &Role,
+) -> InnerResponse<R> {
     ui.with_layout(
         egui::Layout::top_down(match role {
             Role::System => egui::Align::Center,
@@ -186,19 +222,6 @@ pub fn message_container(ui: &mut egui::Ui, content: &str, role: &Role, toasts: 
             Role::Assistant => egui::Align::LEFT,
         })
         .with_main_wrap(true),
-        |ui| {
-            ui.group(|ui| {
-                if ui
-                    .add(egui::Label::new(egui::RichText::new(content)).sense(egui::Sense::click()))
-                    .clicked()
-                {
-                    ui.output_mut(|o| o.copied_text = content.to_string());
-                    toasts
-                        .success("Copied")
-                        .set_closable(false)
-                        .set_duration(Some(Duration::from_secs(1)));
-                }
-            });
-        },
-    );
+        |ui| ui.group(|ui| add_contents(ui)).inner,
+    )
 }

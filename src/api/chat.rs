@@ -144,6 +144,12 @@ impl ChatGPT {
             pending_generate: Arc::new(RwLock::new(None)),
         }
     }
+    pub async fn set_max_tokens(&mut self, max_tokens: Option<u32>) {
+        self.chat.write().await.max_tokens = max_tokens;
+    }
+    pub async fn set_temperature(&mut self, temperature: f32) {
+        self.chat.write().await.temperature = Some(temperature);
+    }
     pub async fn set_presence_penalty(&mut self, presence_penalty: f32) {
         self.chat.write().await.presence_penalty = Some(presence_penalty);
     }

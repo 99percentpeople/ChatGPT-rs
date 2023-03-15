@@ -1,4 +1,4 @@
-use std::{rc::Rc, sync::atomic};
+use std::sync::atomic;
 
 use eframe::egui;
 use tokio::task::block_in_place;
@@ -7,7 +7,7 @@ use crate::api::models::ModelsAPI;
 
 pub struct ModelTable {
     pub models: ModelsAPI,
-    call_back_fn: Option<Rc<dyn Fn(String)>>,
+    call_back_fn: Option<Box<dyn FnMut(String)>>,
 }
 
 impl Default for ModelTable {
@@ -19,8 +19,8 @@ impl Default for ModelTable {
     }
 }
 impl ModelTable {
-    pub fn on_select_model(&mut self, call_back_fn: impl Fn(String) + 'static) {
-        self.call_back_fn = Some(Rc::new(call_back_fn));
+    pub fn on_select_model(&mut self, call_back_fn: impl FnMut(String) + 'static) {
+        self.call_back_fn.replace(Box::new(call_back_fn));
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
@@ -91,7 +91,7 @@ impl ModelTable {
                                         ui.label(model.owned_by);
                                     });
                                     row.col(|ui| {
-                                        if let Some(callback) = self.call_back_fn.clone() {
+                                        if let Some(callback) = &mut self.call_back_fn {
                                             if ui.button("Select").clicked() {
                                                 callback(model.id);
                                             }
