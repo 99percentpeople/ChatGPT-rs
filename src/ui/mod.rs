@@ -1,3 +1,4 @@
+pub mod logger;
 mod model_table;
 mod parameter_control;
 use std::{
@@ -5,25 +6,29 @@ use std::{
     time::Duration,
 };
 
-use crate::api::chat::{ChatGPT, Role};
-use eframe::egui;
+use crate::api::chat::{Chat, ChatAPI, Role};
+use eframe::{egui, epaint};
 
-use self::{model_table::ModelTable, parameter_control::ParameterControl};
+use self::{logger::LoggerUi, model_table::ModelTable, parameter_control::ParameterControl};
 use egui_notify::Toasts;
 pub struct ChatApp {
-    chat: ChatGPT,
+    chatgpt: ChatAPI,
     text: String,
+    is_ready: Arc<atomic::AtomicBool>,
+    show_log: bool,
+    show_model_table: bool,
+    show_parameter_control: bool,
     model_table: model_table::ModelTable,
     parameter_control: parameter_control::ParameterControl,
-    is_ready: Arc<atomic::AtomicBool>,
+    logger: LoggerUi,
     toasts: Toasts,
 }
 impl ChatApp {
-    pub fn new_with_chat(cc: &eframe::CreationContext, chat: ChatGPT) -> Self {
+    pub fn new_with_chat(cc: &eframe::CreationContext, chatgpt: ChatAPI) -> Self {
         setup_fonts(&cc.egui_ctx);
         let mut model_table = ModelTable::default();
         {
-            let chat = chat.clone();
+            let chat = chatgpt.clone();
             model_table.on_select_model(move |model| {
                 let mut chat = chat.clone();
                 tokio::spawn(async move {
@@ -33,7 +38,7 @@ impl ChatApp {
         }
         let mut parameter_control = ParameterControl::default();
         {
-            let chat = chat.clone();
+            let chat = chatgpt.clone();
             parameter_control.on_max_tokens_changed(move |max_tokens| {
                 let mut chat = chat.clone();
                 tokio::spawn(async move {
@@ -42,7 +47,7 @@ impl ChatApp {
             });
         }
         {
-            let chat = chat.clone();
+            let chat = chatgpt.clone();
             parameter_control.on_temperature_changed(move |temperature| {
                 let mut chat = chat.clone();
                 tokio::spawn(async move {
@@ -51,7 +56,7 @@ impl ChatApp {
             });
         }
         {
-            let chat = chat.clone();
+            let chat = chatgpt.clone();
             parameter_control.on_top_p_changed(move |top_p| {
                 let mut chat = chat.clone();
                 tokio::spawn(async move {
@@ -60,7 +65,7 @@ impl ChatApp {
             });
         }
         {
-            let chat = chat.clone();
+            let chat = chatgpt.clone();
             parameter_control.on_presence_penalty_changed(move |presence_penalty| {
                 let mut chat = chat.clone();
                 tokio::spawn(async move {
@@ -69,7 +74,7 @@ impl ChatApp {
             });
         }
         {
-            let chat = chat.clone();
+            let chat = chatgpt.clone();
             parameter_control.on_frequency_penalty_changed(move |frequency_penalty| {
                 let mut chat = chat.clone();
                 tokio::spawn(async move {
@@ -78,10 +83,23 @@ impl ChatApp {
             });
         }
         Self {
-            chat,
+            chatgpt,
             text: String::new(),
             toasts: Toasts::default(),
             model_table,
+            logger: LoggerUi::default(),
+            show_log: {
+                #[cfg(debug_assertions)]
+                {
+                    true
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    false
+                }
+            },
+            show_model_table: false,
+            show_parameter_control: false,
             is_ready: Arc::new(atomic::AtomicBool::new(true)),
             parameter_control,
         }
@@ -91,22 +109,58 @@ impl eframe::App for ChatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let (chat, generate) = tokio::task::block_in_place(|| {
             (
-                self.chat.chat.blocking_read().clone(),
-                self.chat.pending_generate.blocking_read().clone(),
+                self.chatgpt.chat.blocking_read().clone(),
+                if let Some(pending_generate) =
+                    self.chatgpt.pending_generate.blocking_read().as_ref()
+                {
+                    match pending_generate {
+                        Ok(pending_generate) => pending_generate.content.clone(),
+                        Err(e) => Some(e.to_string()),
+                    }
+                } else {
+                    None
+                },
             )
         });
-
         let is_ready = self.is_ready.load(atomic::Ordering::Relaxed);
-
-        egui::SidePanel::left("left_panel").show(ctx, |ui| {
-            self.model_table.ui(ui);
-        });
-        egui::SidePanel::right("right_panel").show(ctx, |ui| {
-            self.parameter_control.ui(ui);
-        });
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.heading(chat.model);
+            ui.horizontal(|ui| {
+                ui.selectable_label(self.show_model_table, "Model Table")
+                    .clicked()
+                    .then(|| {
+                        self.show_model_table = !self.show_model_table;
+                    });
+                ui.selectable_label(self.show_parameter_control, "Parameter Control")
+                    .clicked()
+                    .then(|| {
+                        self.show_parameter_control = !self.show_parameter_control;
+                    });
+                ui.separator();
+                ui.selectable_label(self.show_log, "Log")
+                    .clicked()
+                    .then(|| {
+                        self.show_log = !self.show_log;
+                    });
+            });
         });
+
+        if self.show_log {
+            egui::Window::new("Log")
+                .open(&mut self.show_log)
+                .show(ctx, |ui| {
+                    self.logger.ui(ui);
+                });
+        }
+        if self.show_model_table {
+            egui::SidePanel::left("left_panel").show(ctx, |ui| {
+                self.model_table.ui(ui);
+            });
+        }
+        if self.show_parameter_control {
+            egui::SidePanel::right("right_panel").show(ctx, |ui| {
+                self.parameter_control.ui(ui);
+            });
+        }
 
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
@@ -120,15 +174,14 @@ impl eframe::App for ChatApp {
                         {
                             let input_text = self.text.trim().to_string();
                             if !input_text.is_empty() {
-                                let mut chat = self.chat.clone();
+                                let mut chat = self.chatgpt.clone();
                                 let is_ready = self.is_ready.clone();
                                 tokio::spawn(async move {
                                     is_ready.store(false, atomic::Ordering::Relaxed);
-                                    if let Err(e) = chat.question(input_text).await {
-                                        println!("Error sending message: {}", e);
-                                    }
+                                    chat.question(input_text).await.ok();
                                     is_ready.store(true, atomic::Ordering::Relaxed);
                                 });
+
                                 self.text.clear();
                             }
                         }
@@ -136,7 +189,7 @@ impl eframe::App for ChatApp {
                             .add_sized(egui::vec2(50., 40.), egui::Button::new("Clear"))
                             .clicked()
                         {
-                            let mut chat = self.chat.clone();
+                            let mut chat = self.chatgpt.clone();
                             tokio::spawn(async move {
                                 chat.clear_message().await;
                             });
@@ -145,49 +198,58 @@ impl eframe::App for ChatApp {
                 });
             });
         });
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.vertical(|ui| {
-                    for message in chat.messages {
-                        message_container(
-                            ui,
-                            |ui| {
-                                let content = message.content.to_string();
-                                ui.add(
-                                    egui::Label::new(egui::RichText::new(&content))
-                                        .sense(egui::Sense::click()),
-                                )
-                                .clicked()
-                                .then(|| {
-                                    ui.output_mut(|o| o.copied_text = content);
-                                    self.toasts
-                                        .success("Copied")
-                                        .set_closable(false)
-                                        .set_duration(Some(Duration::from_secs(1)));
-                                });
-                            },
-                            &message.role,
-                        );
-                    }
-                    if let Some(generate) = generate.as_ref() {
-                        {
+            ui.heading(chat.model);
+            ui.separator();
+            egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        for message in chat.messages {
                             message_container(
                                 ui,
                                 |ui| {
-                                    if let Some(content) = generate.content.as_ref() {
-                                        ui.label(content)
-                                    } else {
-                                        ui.spinner()
-                                    };
+                                    let content = message.content.to_string();
+                                    ui.add(
+                                        egui::Label::new(egui::RichText::new(&content))
+                                            .sense(egui::Sense::click()),
+                                    )
+                                    .clicked()
+                                    .then(|| {
+                                        ui.output_mut(|o| o.copied_text = content);
+                                        self.toasts
+                                            .success("Copied")
+                                            .set_closable(false)
+                                            .set_duration(Some(Duration::from_secs(1)));
+                                    });
+                                },
+                                &message.role,
+                            );
+                        }
+
+                        if let Some(generate) = &generate {
+                            {
+                                message_container(
+                                    ui,
+                                    |ui| {
+                                        ui.label(generate);
+                                    },
+                                    &Role::Assistant,
+                                );
+                            }
+                            ctx.request_repaint();
+                        } else if !is_ready {
+                            message_container(
+                                ui,
+                                |ui| {
+                                    ui.spinner();
                                 },
                                 &Role::Assistant,
                             );
                         }
-
-                        ctx.request_repaint();
-                    }
+                    });
                 });
-            });
         });
         self.toasts.show(ctx);
     }

@@ -2,9 +2,10 @@ use hyper::body::HttpBody;
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Request, Uri};
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 use crate::client::MultiClient;
-use futures::TryStreamExt;
+use futures::{StreamExt, TryStreamExt};
 use std::ops::Not;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
@@ -81,6 +82,15 @@ pub struct ResponseChatMessage {
     pub content: Option<String>,
 }
 
+impl Default for ResponseChatMessage {
+    fn default() -> Self {
+        Self {
+            role: None,
+            content: None,
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatMessage {
     pub role: Role,
@@ -88,12 +98,13 @@ pub struct ChatMessage {
 }
 #[derive(Debug, Deserialize, Serialize)]
 struct ChatCompletion {
-    id: String,
-    object: String,
-    created: u64,
-    model: String,
-    choices: Vec<ChatChoice>,
+    id: Option<String>,
+    object: Option<String>,
+    created: Option<u64>,
+    model: Option<String>,
+    choices: Option<Vec<ChatChoice>>,
     usage: Option<ChatUsage>,
+    error: Option<ChatError>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -103,13 +114,21 @@ struct ChatChoice {
     finish_reason: Option<String>,
 }
 
-#[derive(Clone)]
-pub struct ChatGPT {
+#[derive(Debug, Deserialize, Serialize)]
+struct ChatError {
+    message: String,
+    r#type: String,
+    param: Option<String>,
+    code: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ChatAPI {
     pub chat: Arc<RwLock<Chat>>,
     client: Arc<MultiClient>,
     api_key: String,
 
-    pub pending_generate: Arc<RwLock<Option<ResponseChatMessage>>>,
+    pub pending_generate: Arc<RwLock<Option<Result<ResponseChatMessage, anyhow::Error>>>>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -119,7 +138,7 @@ struct ChatUsage {
     total_tokens: u32,
 }
 
-impl ChatGPT {
+impl ChatAPI {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
     const DEFAULT_MODEL: &'static str = "gpt-3.5-turbo";
 
@@ -174,26 +193,52 @@ impl ChatGPT {
         })
         .await;
     }
-    pub async fn question(&mut self, question: String) -> Result<String, anyhow::Error> {
+    pub async fn question(&mut self, question: String) -> Result<(), anyhow::Error> {
         self.add_message(ChatMessage {
             role: Role::User,
             content: question,
         })
         .await;
-        let stream = self.completion().await?;
+        *self.pending_generate.write().await = Some(Ok(ResponseChatMessage::default()));
+        let mut stream = self.completion().await?;
+        while let Some(res) = stream.next().await {
+            match res {
+                Ok(segment) => {
+                    let mut pending_generate = self.pending_generate.write().await;
+                    let mut pending_generate = pending_generate.as_mut().unwrap().as_mut().unwrap();
+                    if let Some(content) = &mut pending_generate.content {
+                        content.push_str(&segment);
+                    } else {
+                        pending_generate.content = Some(segment);
+                    }
+                }
+                Err(e) => {
+                    let mut pending_generate = self.pending_generate.write().await;
+                    pending_generate.replace(Err(e));
+                    break;
+                }
+            }
+        }
+        let message = if let Some(result) = self.pending_generate.write().await.take() {
+            result?
+        } else {
+            anyhow::bail!("pending_generate is None");
+        };
+        let Some(content) = message.content else{
+            anyhow::bail!("content is empty");
+        };
+        self.add_message(ChatMessage {
+            role: Role::Assistant,
+            content,
+        })
+        .await;
 
-        let answer = stream.try_collect().await?;
-
-        Ok(answer)
+        Ok(())
     }
-
+    #[instrument]
     async fn completion(
         &mut self,
     ) -> Result<impl Stream<Item = Result<String, anyhow::Error>>, anyhow::Error> {
-        *self.pending_generate.write().await = Some(ResponseChatMessage {
-            role: None,
-            content: None,
-        });
         let uri: Uri = Self::URL.parse()?;
 
         let body = Body::from(serde_json::to_string(&self.chat.write().await.clone())?);
@@ -217,64 +262,68 @@ impl ChatGPT {
         let (sender, receiver) = mpsc::channel::<Result<String, anyhow::Error>>(100);
 
         let mut _self = self.clone();
-
         tokio::spawn(async move {
-            while let Some(chunk) = response.body_mut().data().await {
-                match chunk {
-                    Ok(chunk) => {
-                        for raw in std::str::from_utf8(&chunk)
-                            .unwrap()
-                            .split("data: ")
-                            .filter_map(|v| v.trim().is_empty().not().then_some(v))
-                        {
-                            if raw.starts_with("[DONE]") {
-                                if let Some(pending_generate) =
-                                    _self.pending_generate.clone().write().await.take()
-                                {
-                                    _self
-                                        .add_message(ChatMessage {
-                                            role: pending_generate.role.unwrap(),
-                                            content: pending_generate.content.unwrap(),
-                                        })
-                                        .await;
-                                }
-                                break;
-                            }
-                            match serde_json::from_str::<ChatCompletion>(&raw) {
-                                Ok(chat_completion) => {
-                                    if let Some(pending_generate) =
-                                        _self.pending_generate.write().await.as_mut()
-                                    {
-                                        let message = &chat_completion.choices[0].delta;
-                                        if let Some(role) = &message.role {
-                                            pending_generate.role.replace(role.clone());
-                                        }
-                                        if let Some(content) = &message.content {
-                                            if content == "\n\n" {
-                                                continue;
-                                            }
-                                            if let Some(old_content) =
-                                                pending_generate.content.as_mut()
-                                            {
-                                                old_content.push_str(content);
-                                            } else {
-                                                pending_generate.content.replace(content.clone());
-                                            }
-                                            sender.send(Ok(content.clone())).await.unwrap();
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    sender.send(Err(e.into())).await.unwrap();
-                                }
-                            }
+            let res: Result<(), anyhow::Error> = 'stream: {
+                let mut pending_generate = ResponseChatMessage::default();
+                while let Some(chunk) = response.body_mut().data().await {
+                    let chunk = match chunk {
+                        Ok(chunk) => chunk,
+                        Err(e) => {
+                            tracing::error!("{}", e);
+                            break 'stream Err(e.into());
                         }
-                    }
-                    Err(e) => {
-                        sender.send(Err(e.into())).await.unwrap();
-                        break;
+                    };
+                    for raw in std::str::from_utf8(&chunk)
+                        .unwrap()
+                        .split("data: ")
+                        .filter_map(|v| v.trim().is_empty().not().then_some(v))
+                    {
+                        if raw.starts_with("[DONE]") {
+                            break 'stream Ok(());
+                        }
+                        tracing::info!("received: {}", raw);
+                        let chat_completion = match serde_json::from_str::<ChatCompletion>(&raw) {
+                            Ok(chat_completion) => chat_completion,
+                            Err(e) => {
+                                tracing::error!("error: {}", e);
+                                break 'stream Err(e.into());
+                            }
+                        };
+                        if let Some(error) = &chat_completion.error {
+                            tracing::error!("error: {}", error.message);
+                            break 'stream Err(anyhow::anyhow!(error.message.clone()));
+                        }
+                        let Some(choices) = &chat_completion.choices else {
+                            continue;
+                        };
+                        let Some(first_choice) = &choices.first() else{
+                            continue;
+                        };
+                        let message = &first_choice.delta;
+
+                        if let Some(role) = &message.role {
+                            pending_generate.role.replace(role.clone());
+                        }
+                        let Some(content) = &message.content else {
+                            continue;
+                        };
+                        if content == "\n\n" {
+                            continue;
+                        }
+                        if let Some(old_content) = pending_generate.content.as_mut() {
+                            old_content.push_str(content);
+                        } else {
+                            pending_generate.content.replace(content.clone());
+                        }
+                        sender.send(Ok(content.clone())).await.unwrap();
                     }
                 }
+                Ok(())
+            };
+            if let Err(e) = res {
+                tracing::error!("{}", e);
+                _self.pending_generate.write().await.take();
+                sender.send(Err(e)).await.unwrap();
             }
         });
         Ok(ReceiverStream::new(receiver))
