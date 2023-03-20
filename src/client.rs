@@ -1,6 +1,7 @@
 use hyper::body::HttpBody;
 use hyper::client::{HttpConnector, ResponseFuture};
 
+use hyper::service::Service;
 use hyper::{Client, Request, Uri};
 use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use hyper_tls::HttpsConnector;
@@ -38,33 +39,33 @@ impl MultiClient {
         B::Data: Send,
         B::Error: Into<Box<dyn Error + Send + Sync>>,
     {
-        if let Some(c) = self
+        match self
             .0
             .downcast_ref::<Client<HttpsConnector<HttpConnector>, B>>()
         {
-            c.request(req)
-        } else if let Some(c) = self
-            .0
-            .downcast_ref::<Client<ProxyConnector<HttpsConnector<HttpConnector>>, B>>()
-        {
-            c.request(req)
-        } else {
-            panic!("Unknown client type");
+            Some(c) => c.request(req),
+            None => match self
+                .0
+                .downcast_ref::<Client<ProxyConnector<HttpsConnector<HttpConnector>>, B>>()
+            {
+                Some(c) => c.request(req),
+                None => panic!("Unknown client type"),
+            },
         }
     }
     pub fn get(&self, uri: Uri) -> ResponseFuture {
-        if let Some(c) = self
+        match self
             .0
             .downcast_ref::<Client<HttpsConnector<HttpConnector>>>()
         {
-            c.get(uri)
-        } else if let Some(c) = self
-            .0
-            .downcast_ref::<Client<ProxyConnector<HttpsConnector<HttpConnector>>>>()
-        {
-            c.get(uri)
-        } else {
-            panic!("Unknown client type");
+            Some(c) => c.get(uri),
+            None => match self
+                .0
+                .downcast_ref::<Client<ProxyConnector<HttpsConnector<HttpConnector>>>>()
+            {
+                Some(c) => c.get(uri),
+                None => panic!("Unknown client type"),
+            },
         }
     }
 }

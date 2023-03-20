@@ -1,30 +1,30 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![feature(is_some_and)]
-use api::chat::ChatAPI;
+#![feature(return_position_impl_trait_in_trait)]
+use api::chat::{ChatAPI, ChatAPIBuilder};
 use eframe::egui;
 use std::error::Error;
 use tracing::{info, info_span, Level};
-use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::prelude::*;
 
 mod api;
-pub mod client;
-pub mod error;
+mod client;
+mod error;
 mod ui;
+
 use ui::logger::Logger;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv::dotenv().ok();
-
     tracing_subscriber::registry()
         .with(Logger::new(Level::TRACE))
         .init();
-    let span1 = info_span!("main0", level = 1);
-    let _entered = span1.enter();
-    let span2 = info_span!("main1", level = 2);
-    let _entered1 = span2.enter();
-    info!(a_bool = true, answer = 42, message = "first example");
+    // let span = tracing::span!(Level::DEBUG, "main");
+    // let _enter = span.enter();
 
-    let mut chat = ChatAPI::new();
+    let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY is not set");
+    let mut chat = ChatAPIBuilder::new(api_key).build();
     if let Ok(system_message) = std::env::var("SYSTEM_MESSAGE") {
         if !system_message.is_empty() {
             chat.system(system_message).await;

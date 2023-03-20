@@ -16,6 +16,8 @@ use tracing_subscriber::{
     Layer,
 };
 
+use super::View;
+
 pub static LOG: RwLock<VecDeque<LogOutput>> = RwLock::new(VecDeque::new());
 
 pub struct Logger {
@@ -135,19 +137,14 @@ where
         id: &tracing::span::Id,
         ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
-        // 基于 field 值来构建我们自己的 JSON 对象
         let mut fields = BTreeMap::new();
         let mut visitor = JsonVisitor(&mut fields);
         attrs.record(&mut visitor);
 
-        // 使用之前创建的 newtype 包裹下
         let storage = CustomFieldStorage(fields);
 
-        // 获取内部 span 数据的引用
         let span = ctx.span(id).unwrap();
-        // 获取扩展，用于存储我们的 span 数据
         let mut extensions = span.extensions_mut();
-        // 存储！
         extensions.insert::<CustomFieldStorage>(storage);
     }
     fn on_record(
@@ -156,26 +153,21 @@ where
         values: &tracing::span::Record<'_>,
         ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
-        // 获取正在记录数据的 span
         let span = ctx.span(id).unwrap();
 
-        // 获取数据的可变引用，该数据是在 on_new_span 中创建的
         let mut extensions_mut = span.extensions_mut();
         let custom_field_storage: &mut CustomFieldStorage =
             extensions_mut.get_mut::<CustomFieldStorage>().unwrap();
         let json_data: &mut BTreeMap<String, serde_json::Value> = &mut custom_field_storage.0;
 
-        // 使用我们的访问器老朋友
         let mut visitor = JsonVisitor(json_data);
         values.record(&mut visitor);
     }
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
-        // All of the span context
         let spans = ctx
             .event_scope(event)
             .and_then(|scope| Some(scope.map(LogOutput::from).collect()));
 
-        // The fields of the event
         let mut fields = BTreeMap::new();
         let mut visitor = JsonVisitor(&mut fields);
         event.record(&mut visitor);
@@ -224,159 +216,6 @@ impl Default for LoggerUi {
 }
 
 impl LoggerUi {
-    pub fn ui(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Search: ");
-
-            let response = ui.text_edit_singleline(&mut self.search_term);
-            ui.button("ｘ").clicked().then(|| self.search_term.clear());
-            let mut config_changed = false;
-
-            if ui
-                .selectable_label(self.search_case_sensitive, "Aa")
-                .on_hover_text("Case sensitive")
-                .clicked()
-            {
-                self.search_case_sensitive = !self.search_case_sensitive;
-                config_changed = true;
-            };
-            if ui
-                .selectable_label(self.search_use_regex, ".*")
-                .on_hover_text("Use regex")
-                .clicked()
-            {
-                self.search_use_regex = !self.search_use_regex;
-                config_changed = true;
-            }
-            if self.search_use_regex && (response.changed() || config_changed) {
-                self.regex = RegexBuilder::new(&self.search_term)
-                    .case_insensitive(!self.search_case_sensitive)
-                    .build()
-                    .ok()
-            };
-        });
-        ui.collapsing("Filter", |ui| {
-            egui::Grid::new("filter_grid")
-                .num_columns(2)
-                .show(ui, |ui| {
-                    ui.label("Span: ");
-                    ui.text_edit_singleline(&mut self.span_filter);
-                    ui.button("ｘ").clicked().then(|| self.span_filter.clear());
-                    ui.end_row();
-                    ui.label("Target: ");
-                    ui.text_edit_singleline(&mut self.target_filter);
-                    ui.button("ｘ")
-                        .clicked()
-                        .then(|| self.target_filter.clear());
-                    ui.end_row();
-                });
-        });
-
-        // ui.horizontal(|ui| {
-        //     if ui.button("Sort").clicked() {
-        //         logs.sort()
-        //     }
-        // });
-
-        ui.horizontal(|ui| {
-            ui.label("Max Log output");
-            ui.add(
-                egui::widgets::DragValue::new(&mut self.max_log_length)
-                    .speed(1)
-                    .clamp_range(1..=1000),
-            );
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                ui.menu_button("Log Levels", |ui| {
-                    for level in Level::iter() {
-                        if ui
-                            .selectable_label(self.log_levels[level as usize], level.to_string())
-                            .clicked()
-                        {
-                            self.log_levels[level as usize] = !self.log_levels[level as usize];
-                        }
-                    }
-                });
-                if ui.button("Clear").clicked() {
-                    LOG.write().unwrap().clear();
-                }
-            });
-        });
-        ui.separator();
-        let logs = LOG.read().unwrap();
-        let logs_len = logs.len();
-        let log_levels = self.log_levels.clone();
-        let logs_iter = logs
-            .iter()
-            .filter(|log| log_levels[log.level as usize])
-            .filter(|log| {
-                log.spans.as_ref().is_some_and(|span| {
-                    span.iter()
-                        .find(|span| span.name.contains(&self.span_filter))
-                        .is_some()
-                })
-            })
-            .filter(|log| log.target.contains(&self.target_filter))
-            .take(self.max_log_length);
-
-        let mut logs_displayed_content = logs_iter.collect::<Vec<_>>();
-        logs_displayed_content.reverse();
-        let mut logs_displayed: usize = 0;
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, true])
-            .max_height(ui.available_height() - 40.0)
-            .stick_to_bottom(true)
-            .show(ui, |ui| {
-                logs_displayed_content.iter().for_each(|data| {
-                    let content = &serde_json::to_string_pretty(&data).unwrap();
-                    if !self.search_term.is_empty() && !self.match_string(content) {
-                        return;
-                    }
-                    let mut job = text::LayoutJob::default();
-                    // let first_row_indentation = 10.0;
-                    let (level, color) = match data.level {
-                        Level::Warn => ("[WARN]", epaint::Color32::YELLOW),
-                        Level::Error => ("[ERROR]", epaint::Color32::RED),
-                        Level::Info => ("[INFO]", epaint::Color32::LIGHT_BLUE),
-                        Level::Debug => ("[DEBUG]", epaint::Color32::LIGHT_GREEN),
-                        Level::Trace => ("[TRACE]", epaint::Color32::LIGHT_GRAY),
-                    };
-                    job.append(
-                        &format!("{}\n", level),
-                        0.,
-                        TextFormat {
-                            color,
-                            ..Default::default()
-                        },
-                    );
-                    job.append(
-                        &content,
-                        0.,
-                        TextFormat {
-                            ..Default::default()
-                        },
-                    );
-                    let l = egui::Label::new(job);
-                    // let copy_text = l.text().to_string();
-                    ui.add(l);
-
-                    logs_displayed += 1;
-                    self.copy_text += &content;
-                });
-            });
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label(format!("Displayed: {}", logs_displayed));
-            ui.label(format!("Log size: {}", logs_len));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Copy").clicked() {
-                    ui.output_mut(|o| o.copied_text = self.copy_text.to_string());
-                }
-            });
-        });
-
-        // has to be cleared after every frame
-        self.copy_text.clear();
-    }
     fn match_string(&self, string: &str) -> bool {
         if self.search_use_regex {
             if let Some(matcher) = &self.regex {
@@ -394,5 +233,172 @@ impl LoggerUi {
                     .contains(&self.search_term.to_lowercase())
             }
         }
+    }
+}
+
+impl super::Window for LoggerUi {
+    fn name(&self) -> &'static str {
+        "Log"
+    }
+    fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
+        egui::Window::new(self.name())
+            .open(open)
+            .show(ctx, |ui| self.ui(ui));
+    }
+}
+
+impl super::View for LoggerUi {
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        egui::TopBottomPanel::top("lg_top").show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Search: ");
+
+                let response = ui.text_edit_singleline(&mut self.search_term);
+                ui.button("ｘ").clicked().then(|| self.search_term.clear());
+                let mut config_changed = false;
+
+                if ui
+                    .selectable_label(self.search_case_sensitive, "Aa")
+                    .on_hover_text("Case sensitive")
+                    .clicked()
+                {
+                    self.search_case_sensitive = !self.search_case_sensitive;
+                    config_changed = true;
+                };
+                if ui
+                    .selectable_label(self.search_use_regex, ".*")
+                    .on_hover_text("Use regex")
+                    .clicked()
+                {
+                    self.search_use_regex = !self.search_use_regex;
+                    config_changed = true;
+                }
+                if self.search_use_regex && (response.changed() || config_changed) {
+                    self.regex = RegexBuilder::new(&self.search_term)
+                        .case_insensitive(!self.search_case_sensitive)
+                        .build()
+                        .ok()
+                };
+            });
+            ui.collapsing("Filter 🎛️", |ui| {
+                egui::Grid::new("filter_grid")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label("Span: ");
+                        ui.text_edit_singleline(&mut self.span_filter);
+                        ui.button("ｘ").clicked().then(|| self.span_filter.clear());
+                        ui.end_row();
+                        ui.label("Target: ");
+                        ui.text_edit_singleline(&mut self.target_filter);
+                        ui.button("ｘ")
+                            .clicked()
+                            .then(|| self.target_filter.clear());
+                        ui.end_row();
+                    });
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Max Log output");
+                ui.add(
+                    egui::widgets::DragValue::new(&mut self.max_log_length)
+                        .speed(1)
+                        .clamp_range(1..=1000),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                    ui.menu_button("Log Levels", |ui| {
+                        for level in Level::iter() {
+                            if ui
+                                .selectable_label(
+                                    self.log_levels[level as usize],
+                                    level.to_string(),
+                                )
+                                .clicked()
+                            {
+                                self.log_levels[level as usize] = !self.log_levels[level as usize];
+                            }
+                        }
+                    });
+                    if ui.button("Clear").clicked() {
+                        LOG.write().unwrap().clear();
+                    }
+                });
+            });
+        });
+        let mut logs_displayed: usize = 0;
+        let logs = LOG.read().unwrap();
+        let logs_len = logs.len();
+        egui::TopBottomPanel::bottom("log_bottom").show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(format!("Displayed: {}", logs_displayed));
+                ui.label(format!("Log size: {}", logs_len));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Copy").clicked() {
+                        ui.output_mut(|o| o.copied_text = self.copy_text.to_string());
+                    }
+                });
+            });
+        });
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            let log_levels = self.log_levels.clone();
+            let logs_iter = logs
+                .iter()
+                .filter(|log| log_levels[log.level as usize])
+                .filter(|log| {
+                    if let Some(spans) = &log.spans {
+                        spans
+                            .iter()
+                            .find(|span| span.name.contains(&self.span_filter))
+                            .is_some()
+                    } else {
+                        self.span_filter.is_empty()
+                    }
+                })
+                .filter(|log| log.target.contains(&self.target_filter))
+                .take(self.max_log_length);
+
+            let mut logs_displayed_content = logs_iter.collect::<Vec<_>>();
+            logs_displayed_content.reverse();
+            egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    logs_displayed_content.iter().for_each(|data| {
+                        let content = &serde_json::to_string_pretty(&data).unwrap();
+                        if !self.search_term.is_empty() && !self.match_string(content) {
+                            return;
+                        }
+                        let mut job = text::LayoutJob::default();
+                        // let first_row_indentation = 10.0;
+                        let (level, color) = match data.level {
+                            Level::Warn => ("[WARN]", epaint::Color32::YELLOW),
+                            Level::Error => ("[ERROR]", epaint::Color32::RED),
+                            Level::Info => ("[INFO]", epaint::Color32::LIGHT_BLUE),
+                            Level::Debug => ("[DEBUG]", epaint::Color32::LIGHT_GREEN),
+                            Level::Trace => ("[TRACE]", epaint::Color32::LIGHT_GRAY),
+                        };
+                        job.append(
+                            &format!("{}\n", level),
+                            0.,
+                            TextFormat {
+                                color,
+                                ..Default::default()
+                            },
+                        );
+                        job.append(
+                            &content,
+                            0.,
+                            TextFormat {
+                                ..Default::default()
+                            },
+                        );
+                        ui.add(egui::Label::new(job));
+
+                        logs_displayed += 1;
+                        self.copy_text += &content;
+                    });
+                });
+        });
+
+        // has to be cleared after every frame
+        self.copy_text.clear();
     }
 }

@@ -138,15 +138,17 @@ struct ChatUsage {
     total_tokens: u32,
 }
 
-impl ChatAPI {
-    const URL: &'static str = "https://api.openai.com/v1/chat/completions";
-    const DEFAULT_MODEL: &'static str = "gpt-3.5-turbo";
+#[derive(Clone, Debug)]
+pub struct ChatAPIBuilder {
+    chat: Chat,
+    api_key: String,
+}
 
-    pub fn new() -> Self {
-        let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY is not set");
+impl ChatAPIBuilder {
+    pub fn new(api_key: String) -> Self {
         Self {
-            chat: Arc::new(RwLock::new(Chat {
-                model: Self::DEFAULT_MODEL.to_string(),
+            chat: Chat {
+                model: ChatAPI::DEFAULT_MODEL.to_string(),
                 messages: Vec::new(),
                 temperature: Some(1.),
                 top_p: Some(1.),
@@ -156,12 +158,75 @@ impl ChatAPI {
                 max_tokens: None,
                 presence_penalty: Some(0.),
                 frequency_penalty: Some(0.),
-            })),
+            },
             api_key,
+        }
+    }
+
+    pub fn model(mut self, model: String) -> Self {
+        self.chat.model = model;
+        self
+    }
+
+    pub fn messages(mut self, messages: Vec<ChatMessage>) -> Self {
+        self.chat.messages = messages;
+        self
+    }
+
+    pub fn temperature(mut self, temperature: f32) -> Self {
+        self.chat.temperature = Some(temperature);
+        self
+    }
+
+    pub fn top_p(mut self, top_p: f32) -> Self {
+        self.chat.top_p = Some(top_p);
+        self
+    }
+
+    pub fn n(mut self, n: u32) -> Self {
+        self.chat.n = Some(n);
+        self
+    }
+
+    pub fn stream(mut self, stream: bool) -> Self {
+        self.chat.stream = Some(stream);
+        self
+    }
+
+    pub fn stop(mut self, stop: Vec<String>) -> Self {
+        self.chat.stop = Some(stop);
+        self
+    }
+
+    pub fn max_tokens(mut self, max_tokens: u32) -> Self {
+        self.chat.max_tokens = Some(max_tokens);
+        self
+    }
+
+    pub fn presence_penalty(mut self, presence_penalty: f32) -> Self {
+        self.chat.presence_penalty = Some(presence_penalty);
+        self
+    }
+
+    pub fn frequency_penalty(mut self, frequency_penalty: f32) -> Self {
+        self.chat.frequency_penalty = Some(frequency_penalty);
+        self
+    }
+
+    pub fn build(self) -> ChatAPI {
+        ChatAPI {
+            chat: Arc::new(RwLock::new(self.chat)),
+            api_key: self.api_key,
             client: Arc::new(MultiClient::new()),
             pending_generate: Arc::new(RwLock::new(None)),
         }
     }
+}
+
+impl ChatAPI {
+    const URL: &'static str = "https://api.openai.com/v1/chat/completions";
+    const DEFAULT_MODEL: &'static str = "gpt-3.5-turbo";
+
     pub async fn set_max_tokens(&mut self, max_tokens: Option<u32>) {
         self.chat.write().await.max_tokens = max_tokens;
     }
@@ -183,15 +248,16 @@ impl ChatAPI {
     pub async fn clear_message(&mut self) {
         self.chat.write().await.messages.clear();
     }
-    async fn add_message(&mut self, message: ChatMessage) {
-        self.chat.write().await.messages.push(message);
-    }
     pub async fn system(&mut self, system_message: String) {
         self.add_message(ChatMessage {
             role: Role::System,
             content: system_message,
         })
         .await;
+    }
+
+    async fn add_message(&mut self, message: ChatMessage) {
+        self.chat.write().await.messages.push(message);
     }
     pub async fn question(&mut self, question: String) -> Result<(), anyhow::Error> {
         self.add_message(ChatMessage {
@@ -235,7 +301,43 @@ impl ChatAPI {
 
         Ok(())
     }
-    #[instrument]
+    pub async fn retry(&mut self) -> Result<(), anyhow::Error> {
+        *self.pending_generate.write().await = Some(Ok(ResponseChatMessage::default()));
+        let mut stream = self.completion().await?;
+        while let Some(res) = stream.next().await {
+            match res {
+                Ok(segment) => {
+                    let mut pending_generate = self.pending_generate.write().await;
+                    let mut pending_generate = pending_generate.as_mut().unwrap().as_mut().unwrap();
+                    if let Some(content) = &mut pending_generate.content {
+                        content.push_str(&segment);
+                    } else {
+                        pending_generate.content = Some(segment);
+                    }
+                }
+                Err(e) => {
+                    let mut pending_generate = self.pending_generate.write().await;
+                    pending_generate.replace(Err(e));
+                    break;
+                }
+            }
+        }
+        let message = if let Some(result) = self.pending_generate.write().await.take() {
+            result?
+        } else {
+            anyhow::bail!("pending_generate is None");
+        };
+        let Some(content) = message.content else{
+            anyhow::bail!("content is empty");
+        };
+        self.add_message(ChatMessage {
+            role: Role::Assistant,
+            content,
+        })
+        .await;
+        Ok(())
+    }
+    #[instrument(skip(self))]
     async fn completion(
         &mut self,
     ) -> Result<impl Stream<Item = Result<String, anyhow::Error>>, anyhow::Error> {
@@ -279,6 +381,7 @@ impl ChatAPI {
                         .filter_map(|v| v.trim().is_empty().not().then_some(v))
                     {
                         if raw.starts_with("[DONE]") {
+                            tracing::info!("received: [DONE]");
                             break 'stream Ok(());
                         }
                         tracing::info!("received: {}", raw);

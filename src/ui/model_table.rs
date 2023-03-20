@@ -45,6 +45,7 @@ impl ModelTable {
                     }
                 });
             }
+
             ui.vertical(|ui| {
                 if let Some(models) = models {
                     let table = egui_extras::TableBuilder::new(ui)
