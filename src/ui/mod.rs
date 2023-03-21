@@ -83,7 +83,7 @@ impl eframe::App for ChatApp {
                         .clicked()
                         .then(|| {
                             self.window =
-                                Some(ChatWindow::new(self.chat_list.new_chat("test").unwrap()));
+                                Some(ChatWindow::new(self.chat_list.new_chat(None).unwrap()));
                         });
                 });
             });

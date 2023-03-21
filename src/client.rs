@@ -1,7 +1,6 @@
 use hyper::body::HttpBody;
 use hyper::client::{HttpConnector, ResponseFuture};
 
-use hyper::service::Service;
 use hyper::{Client, Request, Uri};
 use hyper_proxy::{Intercept, Proxy, ProxyConnector};
 use hyper_tls::HttpsConnector;

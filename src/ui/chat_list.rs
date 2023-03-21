@@ -26,7 +26,7 @@ impl Default for ChatList {
 }
 
 impl ChatList {
-    pub fn new_chat(&mut self, name: &str) -> Result<&mut ChatAPI, anyhow::Error> {
+    pub fn new_chat(&mut self, name: Option<String>) -> Result<&mut ChatAPI, anyhow::Error> {
         let api_key = std::env::var("OPENAI_API_KEY")?;
         let mut chat = ChatAPIBuilder::new(api_key).build();
         if let Ok(system_message) = std::env::var("SYSTEM_MESSAGE") {
@@ -38,8 +38,9 @@ impl ChatList {
                 });
             }
         }
-        self.list.insert(name.to_string(), chat);
-        Ok(self.list.get_mut(name).unwrap())
+        let name = name.unwrap_or_else(|| format!("topic_{}", self.list.len() + 1));
+        self.list.insert(name.to_owned(), chat);
+        Ok(self.list.get_mut(&name).unwrap())
     }
     pub fn remove_chat(&mut self, name: &str) -> Option<ChatAPI> {
         self.list.remove(name)
@@ -94,8 +95,10 @@ impl super::View for ChatList {
 
             ui.button("new").clicked().then(|| {
                 if !self.text.is_empty() {
-                    self.new_chat(&self.text.clone()).unwrap();
+                    self.new_chat(Some(self.text.clone())).unwrap();
                     self.text.clear();
+                } else {
+                    self.new_chat(None).unwrap();
                 }
             });
 

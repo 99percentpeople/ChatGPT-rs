@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::client::MultiClient;
-use futures::{StreamExt, TryStreamExt};
+use futures::StreamExt;
 use std::ops::Not;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
