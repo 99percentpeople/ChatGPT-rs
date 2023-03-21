@@ -162,54 +162,8 @@ impl ChatAPIBuilder {
             api_key,
         }
     }
-
-    pub fn model(mut self, model: String) -> Self {
-        self.chat.model = model;
-        self
-    }
-
-    pub fn messages(mut self, messages: Vec<ChatMessage>) -> Self {
-        self.chat.messages = messages;
-        self
-    }
-
-    pub fn temperature(mut self, temperature: f32) -> Self {
-        self.chat.temperature = Some(temperature);
-        self
-    }
-
-    pub fn top_p(mut self, top_p: f32) -> Self {
-        self.chat.top_p = Some(top_p);
-        self
-    }
-
-    pub fn n(mut self, n: u32) -> Self {
-        self.chat.n = Some(n);
-        self
-    }
-
-    pub fn stream(mut self, stream: bool) -> Self {
-        self.chat.stream = Some(stream);
-        self
-    }
-
-    pub fn stop(mut self, stop: Vec<String>) -> Self {
-        self.chat.stop = Some(stop);
-        self
-    }
-
-    pub fn max_tokens(mut self, max_tokens: u32) -> Self {
-        self.chat.max_tokens = Some(max_tokens);
-        self
-    }
-
-    pub fn presence_penalty(mut self, presence_penalty: f32) -> Self {
-        self.chat.presence_penalty = Some(presence_penalty);
-        self
-    }
-
-    pub fn frequency_penalty(mut self, frequency_penalty: f32) -> Self {
-        self.chat.frequency_penalty = Some(frequency_penalty);
+    pub fn with_chat(mut self, chat: Chat) -> Self {
+        self.chat = chat;
         self
     }
 

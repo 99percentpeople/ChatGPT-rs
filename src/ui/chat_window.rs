@@ -9,8 +9,8 @@ use tokio::task::JoinHandle;
 
 use super::{model_table::ModelTable, parameter_control::ParameterControl, View};
 
-pub struct ChatWindow {
-    chatgpt: ChatAPI,
+pub struct ChatWindow<'a> {
+    chatgpt: &'a mut ChatAPI,
     text: String,
     complete_handle: Option<JoinHandle<()>>,
     error_message: Option<String>,
@@ -22,80 +22,27 @@ pub struct ChatWindow {
     toasts: Toasts,
 }
 
-impl ChatWindow {
-    pub fn new(chatgpt: ChatAPI) -> Self {
-        let mut model_table = ModelTable::default();
-        {
-            let chat = chatgpt.clone();
-            model_table.on_select_model(move |model| {
-                let mut chat = chat.clone();
-                tokio::spawn(async move {
-                    chat.set_model(model).await;
-                });
-            });
-        }
-        let mut parameter_control = ParameterControl::default();
-        {
-            let chat = chatgpt.clone();
-            parameter_control.on_max_tokens_changed(move |max_tokens| {
-                let mut chat = chat.clone();
-                tokio::spawn(async move {
-                    chat.set_max_tokens(max_tokens).await;
-                });
-            });
-        }
-        {
-            let chat = chatgpt.clone();
-            parameter_control.on_temperature_changed(move |temperature| {
-                let mut chat = chat.clone();
-                tokio::spawn(async move {
-                    chat.set_temperature(temperature).await;
-                });
-            });
-        }
-        {
-            let chat = chatgpt.clone();
-            parameter_control.on_top_p_changed(move |top_p| {
-                let mut chat = chat.clone();
-                tokio::spawn(async move {
-                    chat.set_top_p(top_p).await;
-                });
-            });
-        }
-        {
-            let chat = chatgpt.clone();
-            parameter_control.on_presence_penalty_changed(move |presence_penalty| {
-                let mut chat = chat.clone();
-                tokio::spawn(async move {
-                    chat.set_presence_penalty(presence_penalty).await;
-                });
-            });
-        }
-        {
-            let chat = chatgpt.clone();
-            parameter_control.on_frequency_penalty_changed(move |frequency_penalty| {
-                let mut chat = chat.clone();
-                tokio::spawn(async move {
-                    chat.set_frequency_penalty(frequency_penalty).await;
-                });
-            });
-        }
+impl<'a> ChatWindow<'a> {
+    pub fn new(chatgpt: &'a mut ChatAPI) -> Self {
+        let model_table = ModelTable::default();
+
+        let parameter_control = ParameterControl::default();
         Self {
             chatgpt,
             text: String::new(),
-            toasts: Toasts::default(),
             complete_handle: None,
-            model_table,
             error_message: None,
+            is_ready: Arc::new(atomic::AtomicBool::new(true)),
+            model_table,
             show_model_table: false,
             show_parameter_control: false,
-            is_ready: Arc::new(atomic::AtomicBool::new(true)),
             parameter_control,
+            toasts: Toasts::default(),
         }
     }
 }
 
-impl super::MainWindow for ChatWindow {
+impl<'a> super::MainWindow for ChatWindow<'a> {
     fn name(&self) -> &'static str {
         "Chat"
     }
@@ -118,8 +65,9 @@ impl super::MainWindow for ChatWindow {
     }
 }
 
-impl super::View for ChatWindow {
-    fn ui(&mut self, ui: &mut egui::Ui) {
+impl super::View for ChatWindow<'_> {
+    type Response<'a> = () where Self: 'a;
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
         let (chat, generate) = {
             let chatgpt = &self.chatgpt;
             let pending_generate = &chatgpt.pending_generate;
@@ -148,14 +96,44 @@ impl super::View for ChatWindow {
             self.complete_handle.take();
         }
         egui::SidePanel::left("left_panel").show_animated_inside(ui, self.show_model_table, |ui| {
-            self.model_table.ui(ui);
+            match self.model_table.ui(ui) {
+                super::model_table::ResponseEvent::SelectModel(data) => {
+                    let mut chatgpt = self.chatgpt.clone();
+                    tokio::spawn(async move { chatgpt.set_model(data.id).await });
+                }
+                _ => {}
+            }
         });
 
         egui::SidePanel::right("right_panel").show_animated_inside(
             ui,
             self.show_parameter_control,
             |ui| {
-                self.parameter_control.ui(ui);
+                let mut chatgpt = self.chatgpt.clone();
+                match self.parameter_control.ui(ui) {
+                    super::parameter_control::ResponseEvent::MaxTokens(max_tokens) => {
+                        tokio::spawn(async move { chatgpt.set_max_tokens(max_tokens).await });
+                    }
+                    super::parameter_control::ResponseEvent::Temperature(temperature) => {
+                        tokio::spawn(async move { chatgpt.set_temperature(temperature).await });
+                    }
+                    super::parameter_control::ResponseEvent::TopP(top_p) => {
+                        tokio::spawn(async move { chatgpt.set_top_p(top_p).await });
+                    }
+                    super::parameter_control::ResponseEvent::PresencePenalty(presence_penalty) => {
+                        tokio::spawn(async move {
+                            chatgpt.set_presence_penalty(presence_penalty).await
+                        });
+                    }
+                    super::parameter_control::ResponseEvent::FrequencyPenalty(
+                        frequency_penalty,
+                    ) => {
+                        tokio::spawn(async move {
+                            chatgpt.set_frequency_penalty(frequency_penalty).await
+                        });
+                    }
+                    super::parameter_control::ResponseEvent::None => {}
+                }
             },
         );
 

@@ -87,7 +87,7 @@ impl<'a> tracing::field::Visit for JsonVisitor<'a> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         self.0.insert(
             field.name().to_string(),
-            serde_json::json!(format!("{value:#?}")),
+            serde_json::json!(format!("{value:?}")),
         );
     }
 }
@@ -248,7 +248,8 @@ impl super::Window for LoggerUi {
 }
 
 impl super::View for LoggerUi {
-    fn ui(&mut self, ui: &mut egui::Ui) {
+    type Response<'a> = ();
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
         egui::TopBottomPanel::top("lg_top").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Search: ");

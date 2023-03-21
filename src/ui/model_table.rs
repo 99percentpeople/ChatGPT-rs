@@ -3,27 +3,29 @@ use std::sync::atomic;
 use eframe::egui;
 use tokio::task::block_in_place;
 
-use crate::api::models::ModelsAPI;
+use crate::api::models::{ModelData, ModelsAPI};
 
 pub struct ModelTable {
     pub models: ModelsAPI,
-    call_back_fn: Option<Box<dyn FnMut(String)>>,
+}
+
+pub enum ResponseEvent {
+    SelectModel(ModelData),
+    None,
 }
 
 impl Default for ModelTable {
     fn default() -> Self {
         Self {
             models: ModelsAPI::new(),
-            call_back_fn: None,
         }
     }
 }
-impl ModelTable {
-    pub fn on_select_model(&mut self, call_back_fn: impl FnMut(String) + 'static) {
-        self.call_back_fn.replace(Box::new(call_back_fn));
-    }
 
-    pub fn ui(&mut self, ui: &mut egui::Ui) {
+impl super::View for ModelTable {
+    type Response<'a> = ResponseEvent;
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
+        let mut event = ResponseEvent::None;
         let models = block_in_place(|| self.models.models.blocking_read().clone());
         let is_ready = self.models.is_ready.load(atomic::Ordering::Relaxed);
         ui.vertical(|ui| {
@@ -89,13 +91,11 @@ impl ModelTable {
                                         ui.label(&model.id);
                                     });
                                     row.col(|ui| {
-                                        ui.label(model.owned_by);
+                                        ui.label(&model.owned_by);
                                     });
                                     row.col(|ui| {
-                                        if let Some(callback) = &mut self.call_back_fn {
-                                            if ui.button("Select").clicked() {
-                                                callback(model.id);
-                                            }
+                                        if ui.button("Select").clicked() {
+                                            event = ResponseEvent::SelectModel(model);
                                         }
                                     });
                                 })
@@ -104,5 +104,6 @@ impl ModelTable {
                 }
             });
         });
+        event
     }
 }
