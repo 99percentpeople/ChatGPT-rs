@@ -1,8 +1,5 @@
 use crate::api::chat::{ChatAPI, Role};
-use eframe::{
-    egui::{self, gui_zoom::kb_shortcuts},
-    epaint,
-};
+use eframe::{egui, epaint};
 use egui_notify::Toasts;
 use std::{
     sync::{atomic, Arc},

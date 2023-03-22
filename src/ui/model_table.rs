@@ -1,9 +1,8 @@
 use std::sync::atomic;
 
 use eframe::egui;
-use tokio::task::block_in_place;
 
-use crate::api::models::{ModelData, ModelsAPI};
+use crate::api::models::ModelsAPI;
 
 use super::ModelType;
 

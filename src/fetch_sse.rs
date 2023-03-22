@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Debug, ops::Not};
+use std::{fmt::Debug, ops::Not};
 
 use futures::Stream;
 use hyper::{body::HttpBody, Body, Response};

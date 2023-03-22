@@ -84,18 +84,18 @@ impl View for CompleteWindow {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    egui::TextEdit::multiline(&mut self.text)
-                        .desired_width(f32::INFINITY)
-                        .show(ui)
-                        .response
-                        .changed()
-                        .then(|| {
-                            let mut complete = self.complete.clone();
-                            let text = self.text.clone();
-                            tokio::spawn(async move {
-                                complete.set_prompt(text).await;
-                            });
+                    ui.add_enabled(
+                        is_ready,
+                        egui::TextEdit::multiline(&mut self.text).desired_width(f32::INFINITY),
+                    )
+                    .changed()
+                    .then(|| {
+                        let mut complete = self.complete.clone();
+                        let text = self.text.clone();
+                        tokio::spawn(async move {
+                            complete.set_prompt(text).await;
                         });
+                    });
                 });
         });
     }
