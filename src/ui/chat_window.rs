@@ -1,5 +1,8 @@
 use crate::api::chat::{ChatAPI, Role};
-use eframe::{egui, epaint};
+use eframe::{
+    egui::{self, gui_zoom::kb_shortcuts},
+    epaint,
+};
 use egui_notify::Toasts;
 use std::{
     sync::{atomic, Arc},
@@ -7,13 +10,12 @@ use std::{
 };
 use tokio::task::JoinHandle;
 
-use super::{model_table::ModelTable, parameter_control::ParameterControl, View};
+use super::{model_table::ModelTable, parameter_control::ParameterControl, ModelType, View};
 
-pub struct ChatWindow<'a> {
-    chatgpt: &'a mut ChatAPI,
+pub struct ChatWindow {
+    chatgpt: ChatAPI,
     text: String,
     complete_handle: Option<JoinHandle<()>>,
-    error_message: Option<String>,
     is_ready: Arc<atomic::AtomicBool>,
     show_model_table: bool,
     show_parameter_control: bool,
@@ -22,16 +24,24 @@ pub struct ChatWindow<'a> {
     toasts: Toasts,
 }
 
-impl<'a> ChatWindow<'a> {
-    pub fn new(chatgpt: &'a mut ChatAPI) -> Self {
-        let model_table = ModelTable::default();
+impl ChatWindow {
+    const LINEBREAK_SHORTCUT: egui::KeyboardShortcut =
+        egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Enter);
+    pub fn new(chatgpt: ChatAPI) -> Self {
+        let model_table = ModelTable::new(ModelType::Chat);
+        let param = tokio::task::block_in_place(|| chatgpt.data.blocking_read().clone());
 
-        let parameter_control = ParameterControl::default();
+        let mut parameter_control = ParameterControl::default();
+        parameter_control.set_max_token_checked(param.max_tokens.is_some());
+        parameter_control.set_max_tokens(param.max_tokens.unwrap_or(2048));
+        parameter_control.set_temperature(param.temperature.unwrap_or(1.));
+        parameter_control.set_frequency_penalty(param.frequency_penalty.unwrap_or(0.));
+        parameter_control.set_presence_penalty(param.presence_penalty.unwrap_or(0.));
+        parameter_control.set_top_p(param.top_p.unwrap_or(1.));
         Self {
             chatgpt,
             text: String::new(),
             complete_handle: None,
-            error_message: None,
             is_ready: Arc::new(atomic::AtomicBool::new(true)),
             model_table,
             show_model_table: false,
@@ -42,7 +52,7 @@ impl<'a> ChatWindow<'a> {
     }
 }
 
-impl<'a> super::MainWindow for ChatWindow<'a> {
+impl super::MainWindow for ChatWindow {
     fn name(&self) -> &'static str {
         "Chat"
     }
@@ -65,41 +75,31 @@ impl<'a> super::MainWindow for ChatWindow<'a> {
     }
 }
 
-impl super::View for ChatWindow<'_> {
-    type Response<'a> = () where Self: 'a;
+impl super::View for ChatWindow {
+    type Response<'a> = ();
     fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
-        let (chat, generate) = {
-            let chatgpt = &self.chatgpt;
-            let pending_generate = &chatgpt.pending_generate;
-            let chat = &chatgpt.chat;
-            tokio::task::block_in_place(move || {
-                (
-                    chat.blocking_read().clone(),
-                    if let Some(pending_generate) = pending_generate.blocking_read().as_ref() {
-                        match pending_generate {
-                            Ok(pending_generate) => pending_generate.content.clone(),
-                            Err(e) => Some(e.to_string()),
-                        }
-                    } else {
-                        None
-                    },
-                )
-            })
-        };
+        let chat = tokio::task::block_in_place(|| self.chatgpt.data.blocking_read().clone());
+        let generate_res = self.chatgpt.get_generate();
+        let is_error = generate_res
+            .as_ref()
+            .is_some_and(|generate| generate.is_err());
+        let generate_text = generate_res.map(|generate| generate.unwrap_or_else(|e| e));
+
         let is_ready = self.is_ready.load(atomic::Ordering::Relaxed);
         let ready_to_retry = chat
             .messages
             .last()
             .is_some_and(|msg| msg.role == Role::User)
             && is_ready;
+        let can_remove_last = !chat.messages.is_empty();
         if is_ready {
             self.complete_handle.take();
         }
         egui::SidePanel::left("left_panel").show_animated_inside(ui, self.show_model_table, |ui| {
             match self.model_table.ui(ui) {
-                super::model_table::ResponseEvent::SelectModel(data) => {
+                super::model_table::ResponseEvent::SelectModel(id) => {
                     let mut chatgpt = self.chatgpt.clone();
-                    tokio::spawn(async move { chatgpt.set_model(data.id).await });
+                    tokio::spawn(async move { chatgpt.set_model(id).await });
                 }
                 _ => {}
             }
@@ -141,6 +141,23 @@ impl super::View for ChatWindow<'_> {
             ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
                 ui.add_enabled_ui(is_ready, |ui| {
                     ui.add(egui::TextEdit::multiline(&mut self.text).desired_width(f32::INFINITY));
+                    if ui.input_mut(|i| i.consume_shortcut(&Self::LINEBREAK_SHORTCUT)) {
+                        // self.text.push_str("\n");
+                        return;
+                    }
+                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        let input_text = self.text.trim().to_string();
+                        if !input_text.is_empty() {
+                            let mut chat = self.chatgpt.clone();
+                            let is_ready = self.is_ready.clone();
+                            self.complete_handle.replace(tokio::spawn(async move {
+                                is_ready.store(false, atomic::Ordering::Relaxed);
+                                chat.question(input_text).await.ok();
+                                is_ready.store(true, atomic::Ordering::Relaxed);
+                            }));
+                            self.text.clear();
+                        }
+                    }
                 });
                 ui.add_space(5.);
                 ui.horizontal(|ui| {
@@ -160,7 +177,16 @@ impl super::View for ChatWindow<'_> {
                                     self.text.clear();
                                 }
                             });
-
+                        ui.add_enabled_ui(can_remove_last, |ui| {
+                            ui.add_sized(egui::vec2(50., 40.), egui::Button::new("Remove Last"))
+                                .clicked()
+                                .then(|| {
+                                    let mut chat = self.chatgpt.clone();
+                                    tokio::spawn(async move {
+                                        chat.remove_last().await;
+                                    });
+                                });
+                        });
                         ui.add_sized(egui::vec2(50., 40.), egui::Button::new("Clear"))
                             .clicked()
                             .then(|| {
@@ -186,7 +212,7 @@ impl super::View for ChatWindow<'_> {
                                 let is_ready = self.is_ready.clone();
                                 self.complete_handle.replace(tokio::spawn(async move {
                                     is_ready.store(false, atomic::Ordering::Relaxed);
-                                    chat.retry().await.ok();
+                                    chat.generate().await.ok();
                                     is_ready.store(true, atomic::Ordering::Relaxed);
                                 }));
                             });
@@ -222,7 +248,7 @@ impl super::View for ChatWindow<'_> {
                                 &message.role,
                             );
                         }
-                        if let Some(generate) = &generate {
+                        if let Some(generate) = &generate_text {
                             {
                                 message_container(
                                     ui,
@@ -233,12 +259,12 @@ impl super::View for ChatWindow<'_> {
                                 );
                             }
                             ui.ctx().request_repaint();
-                        } else if let Some(error_message) = &self.error_message {
+                        } else if is_error {
                             message_container(
                                 ui,
                                 |ui| {
                                     ui.label(
-                                        egui::RichText::new(error_message)
+                                        egui::RichText::new(generate_text.unwrap())
                                             .color(epaint::Color32::RED),
                                     );
                                     ui.button("Retry")
@@ -248,7 +274,7 @@ impl super::View for ChatWindow<'_> {
                             .clicked()
                             .then(|| {
                                 let mut chat = self.chatgpt.clone();
-                                tokio::spawn(async move { chat.retry().await })
+                                tokio::spawn(async move { chat.generate().await })
                             });
                         } else if !is_ready {
                             message_container(

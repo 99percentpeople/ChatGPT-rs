@@ -19,6 +19,27 @@ pub struct ParameterControl {
     max_token_checked: bool,
 }
 
+impl ParameterControl {
+    pub fn set_max_tokens(&mut self, max_tokens: u32) {
+        self.max_tokens = max_tokens;
+    }
+    pub fn set_temperature(&mut self, temperature: f32) {
+        self.temperature = temperature;
+    }
+    pub fn set_top_p(&mut self, top_p: f32) {
+        self.top_p = top_p;
+    }
+    pub fn set_presence_penalty(&mut self, presence_penalty: f32) {
+        self.presence_penalty = presence_penalty;
+    }
+    pub fn set_frequency_penalty(&mut self, frequency_penalty: f32) {
+        self.frequency_penalty = frequency_penalty;
+    }
+    pub fn set_max_token_checked(&mut self, max_token_checked: bool) {
+        self.max_token_checked = max_token_checked;
+    }
+}
+
 impl Default for ParameterControl {
     fn default() -> Self {
         Self {

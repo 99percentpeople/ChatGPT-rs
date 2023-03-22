@@ -47,6 +47,7 @@ impl ModelsAPI {
         let response = self.client.request(request_body).await?;
         let body = body::to_bytes(response.into_body()).await?;
         let models: Models = serde_json::from_slice(&body)?;
+        println!("{:?}", models);
         self.models.write().await.replace(models);
         self.is_ready.store(true, atomic::Ordering::Relaxed);
         Ok(())

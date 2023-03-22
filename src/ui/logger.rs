@@ -104,7 +104,7 @@ pub struct LogOutput {
 impl<'a, R: LookupSpan<'a>> From<registry::SpanRef<'a, R>> for LogOutput {
     fn from(span: registry::SpanRef<'a, R>) -> Self {
         let extensions = span.extensions();
-        let storage = extensions.get::<CustomFieldStorage>().unwrap();
+        let storage = extensions.get::<FieldStorage>().unwrap();
         let field_data: &BTreeMap<String, serde_json::Value> = &storage.0;
         Self {
             level: Level::from(span.metadata().level()),
@@ -117,7 +117,7 @@ impl<'a, R: LookupSpan<'a>> From<registry::SpanRef<'a, R>> for LogOutput {
 }
 
 #[derive(Debug)]
-struct CustomFieldStorage(BTreeMap<String, serde_json::Value>);
+struct FieldStorage(BTreeMap<String, serde_json::Value>);
 
 impl<S> Layer<S> for Logger
 where
@@ -141,11 +141,11 @@ where
         let mut visitor = JsonVisitor(&mut fields);
         attrs.record(&mut visitor);
 
-        let storage = CustomFieldStorage(fields);
+        let storage = FieldStorage(fields);
 
         let span = ctx.span(id).unwrap();
         let mut extensions = span.extensions_mut();
-        extensions.insert::<CustomFieldStorage>(storage);
+        extensions.insert::<FieldStorage>(storage);
     }
     fn on_record(
         &self,
@@ -156,8 +156,8 @@ where
         let span = ctx.span(id).unwrap();
 
         let mut extensions_mut = span.extensions_mut();
-        let custom_field_storage: &mut CustomFieldStorage =
-            extensions_mut.get_mut::<CustomFieldStorage>().unwrap();
+        let custom_field_storage: &mut FieldStorage =
+            extensions_mut.get_mut::<FieldStorage>().unwrap();
         let json_data: &mut BTreeMap<String, serde_json::Value> = &mut custom_field_storage.0;
 
         let mut visitor = JsonVisitor(json_data);
@@ -197,6 +197,7 @@ pub struct LoggerUi {
     search_use_regex: bool,
     copy_text: String,
     max_log_length: usize,
+    logs_displayed: usize,
 }
 
 impl Default for LoggerUi {
@@ -211,6 +212,7 @@ impl Default for LoggerUi {
             search_use_regex: false,
             copy_text: String::new(),
             max_log_length: 20,
+            logs_displayed: 0,
         }
     }
 }
@@ -325,12 +327,11 @@ impl super::View for LoggerUi {
                 });
             });
         });
-        let mut logs_displayed: usize = 0;
         let logs = LOG.read().unwrap();
         let logs_len = logs.len();
         egui::TopBottomPanel::bottom("log_bottom").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(format!("Displayed: {}", logs_displayed));
+                ui.label(format!("Displayed: {}", self.logs_displayed));
                 ui.label(format!("Log size: {}", logs_len));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Copy").clicked() {
@@ -359,7 +360,8 @@ impl super::View for LoggerUi {
 
             let mut logs_displayed_content = logs_iter.collect::<Vec<_>>();
             logs_displayed_content.reverse();
-            egui::ScrollArea::vertical()
+            self.logs_displayed = 0;
+            egui::ScrollArea::new([true, true])
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     logs_displayed_content.iter().for_each(|data| {
@@ -391,9 +393,10 @@ impl super::View for LoggerUi {
                                 ..Default::default()
                             },
                         );
+
                         ui.add(egui::Label::new(job));
 
-                        logs_displayed += 1;
+                        self.logs_displayed += 1;
                         self.copy_text += &content;
                     });
                 });

@@ -7,6 +7,7 @@ use tracing_subscriber::prelude::*;
 
 mod api;
 mod client;
+mod fetch_sse;
 mod ui;
 
 use ui::logger::Logger;

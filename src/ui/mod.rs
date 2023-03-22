@@ -1,14 +1,23 @@
 mod chat_list;
 mod chat_window;
+mod complete_window;
 pub mod logger;
 mod model_table;
 mod parameter_control;
+use self::{chat_list::ChatList, logger::LoggerUi};
 use eframe::egui;
+use strum::{Display, EnumIter};
 
-use self::{chat_list::ChatList, chat_window::ChatWindow, logger::LoggerUi};
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, Display)]
+#[strum(serialize_all = "snake_case")]
+pub enum ModelType {
+    Chat,
+    Complete,
+    Insert,
+}
 
 pub struct ChatApp {
-    window: Option<ChatWindow<'static>>,
+    window: Option<Box<dyn MainWindow>>,
     chat_list: ChatList,
     widgets: Vec<(Box<dyn Window>, bool)>,
 }
@@ -64,10 +73,10 @@ impl eframe::App for ChatApp {
             .iter_mut()
             .for_each(|(view, show)| view.show(ctx, show));
         egui::SidePanel::left("left_chat_panel").show(ctx, |ui| match self.chat_list.ui(ui) {
-            chat_list::ResponseEvent::SelectChat(chat) => {
-                self.window = Some(ChatWindow::new(chat));
+            chat_list::ResponseEvent::Select(chat) => {
+                self.window = Some(chat);
             }
-            chat_list::ResponseEvent::RemoveChat => {
+            chat_list::ResponseEvent::Remove => {
                 self.window = None;
             }
             chat_list::ResponseEvent::None => {}
@@ -82,8 +91,7 @@ impl eframe::App for ChatApp {
                         .on_hover_text("Create a new chat")
                         .clicked()
                         .then(|| {
-                            self.window =
-                                Some(ChatWindow::new(self.chat_list.new_chat(None).unwrap()));
+                            self.window = Some(self.chat_list.new_chat(None).unwrap());
                         });
                 });
             });

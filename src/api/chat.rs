@@ -1,15 +1,14 @@
-use hyper::body::HttpBody;
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Request, Uri};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::client::MultiClient;
+use crate::fetch_sse::fetch_sse;
 use futures::StreamExt;
-use std::ops::Not;
+
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio::sync::RwLock;
 use tokio_stream::Stream;
 
 /// POST https://api.openai.com/v1/chat/completions
@@ -121,21 +120,19 @@ struct ChatError {
     param: Option<String>,
     code: Option<String>,
 }
-
-#[derive(Clone, Debug)]
-pub struct ChatAPI {
-    pub chat: Arc<RwLock<Chat>>,
-    client: Arc<MultiClient>,
-    api_key: String,
-
-    pub pending_generate: Arc<RwLock<Option<Result<ResponseChatMessage, anyhow::Error>>>>,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 struct ChatUsage {
     prompt_tokens: u32,
     completion_tokens: u32,
     total_tokens: u32,
+}
+#[derive(Clone, Debug)]
+pub struct ChatAPI {
+    pub data: Arc<RwLock<Chat>>,
+    client: Arc<MultiClient>,
+    api_key: String,
+
+    pub pending_generate: Arc<RwLock<Option<Result<ResponseChatMessage, anyhow::Error>>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -169,7 +166,7 @@ impl ChatAPIBuilder {
 
     pub fn build(self) -> ChatAPI {
         ChatAPI {
-            chat: Arc::new(RwLock::new(self.chat)),
+            data: Arc::new(RwLock::new(self.chat)),
             api_key: self.api_key,
             client: Arc::new(MultiClient::new()),
             pending_generate: Arc::new(RwLock::new(None)),
@@ -182,25 +179,25 @@ impl ChatAPI {
     const DEFAULT_MODEL: &'static str = "gpt-3.5-turbo";
 
     pub async fn set_max_tokens(&mut self, max_tokens: Option<u32>) {
-        self.chat.write().await.max_tokens = max_tokens;
+        self.data.write().await.max_tokens = max_tokens;
     }
     pub async fn set_temperature(&mut self, temperature: f32) {
-        self.chat.write().await.temperature = Some(temperature);
+        self.data.write().await.temperature = Some(temperature);
     }
     pub async fn set_presence_penalty(&mut self, presence_penalty: f32) {
-        self.chat.write().await.presence_penalty = Some(presence_penalty);
+        self.data.write().await.presence_penalty = Some(presence_penalty);
     }
     pub async fn set_frequency_penalty(&mut self, frequency_penalty: f32) {
-        self.chat.write().await.frequency_penalty = Some(frequency_penalty);
+        self.data.write().await.frequency_penalty = Some(frequency_penalty);
     }
     pub async fn set_top_p(&mut self, top_p: f32) {
-        self.chat.write().await.top_p = Some(top_p);
+        self.data.write().await.top_p = Some(top_p);
     }
     pub async fn set_model(&mut self, model: String) {
-        self.chat.write().await.model = model;
+        self.data.write().await.model = model;
     }
     pub async fn clear_message(&mut self) {
-        self.chat.write().await.messages.clear();
+        self.data.write().await.messages.clear();
     }
     pub async fn system(&mut self, system_message: String) {
         self.add_message(ChatMessage {
@@ -211,7 +208,7 @@ impl ChatAPI {
     }
 
     async fn add_message(&mut self, message: ChatMessage) {
-        self.chat.write().await.messages.push(message);
+        self.data.write().await.messages.push(message);
     }
     pub async fn question(&mut self, question: String) -> Result<(), anyhow::Error> {
         self.add_message(ChatMessage {
@@ -219,63 +216,74 @@ impl ChatAPI {
             content: question,
         })
         .await;
+        match self.generate().await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                tracing::error!("Error generating response: {:?}", e);
+                Err(e)
+            }
+        }?;
+        Ok(())
+    }
+    pub async fn remove_last(&mut self) {
+        match self.data.write().await.messages.pop() {
+            Some(v) => tracing::info!("Removed last message: {:?}", v),
+            None => tracing::info!("No message to remove"),
+        };
+    }
+    pub fn get_generate(&self) -> Option<Result<String, String>> {
+        tokio::task::block_in_place(|| {
+            let pending_generate = self.pending_generate.blocking_read();
+            match pending_generate.as_ref() {
+                Some(Ok(v)) => match &v.content {
+                    Some(content) => Some(Ok(content.clone())),
+                    None => None,
+                },
+                Some(Err(e)) => Some(Err(e.to_string())),
+                None => None,
+            }
+        })
+    }
+    pub async fn generate(&mut self) -> Result<(), anyhow::Error> {
         *self.pending_generate.write().await = Some(Ok(ResponseChatMessage::default()));
-        let mut stream = self.completion().await?;
+        let mut stream = self.complete().await?;
         while let Some(res) = stream.next().await {
-            match res {
-                Ok(segment) => {
-                    let mut pending_generate = self.pending_generate.write().await;
-                    let mut pending_generate = pending_generate.as_mut().unwrap().as_mut().unwrap();
-                    if let Some(content) = &mut pending_generate.content {
-                        content.push_str(&segment);
-                    } else {
-                        pending_generate.content = Some(segment);
-                    }
-                }
+            let mut pending_generate = self.pending_generate.write().await;
+            let pending_generate = pending_generate.as_mut().unwrap().as_mut().unwrap();
+            let res = match res {
+                Ok(res) => res,
                 Err(e) => {
-                    let mut pending_generate = self.pending_generate.write().await;
-                    pending_generate.replace(Err(e));
+                    tracing::error!("Error while generating: {:?}", e);
+                    self.pending_generate.write().await.replace(Err(e.into()));
                     break;
                 }
+            };
+            if let Some(error) = &res.error {
+                anyhow::bail!(error.message.clone());
+            }
+            let Some(choices) = &res.choices else {
+                continue;
+            };
+            let Some(first_choice) = &choices.first() else{
+                continue;
+            };
+            let message = &first_choice.delta;
+            if let Some(role) = &message.role {
+                pending_generate.role.replace(role.clone());
+            }
+            let Some(content) = &message.content else {
+                continue;
+            };
+            if content == "\n\n" || content == "\n\n\n" {
+                continue;
+            }
+            if let Some(old_content) = pending_generate.content.as_mut() {
+                old_content.push_str(content);
+            } else {
+                pending_generate.content.replace(content.clone());
             }
         }
-        let message = if let Some(result) = self.pending_generate.write().await.take() {
-            result?
-        } else {
-            anyhow::bail!("pending_generate is None");
-        };
-        let Some(content) = message.content else{
-            anyhow::bail!("content is empty");
-        };
-        self.add_message(ChatMessage {
-            role: Role::Assistant,
-            content,
-        })
-        .await;
 
-        Ok(())
-    }
-    pub async fn retry(&mut self) -> Result<(), anyhow::Error> {
-        *self.pending_generate.write().await = Some(Ok(ResponseChatMessage::default()));
-        let mut stream = self.completion().await?;
-        while let Some(res) = stream.next().await {
-            match res {
-                Ok(segment) => {
-                    let mut pending_generate = self.pending_generate.write().await;
-                    let mut pending_generate = pending_generate.as_mut().unwrap().as_mut().unwrap();
-                    if let Some(content) = &mut pending_generate.content {
-                        content.push_str(&segment);
-                    } else {
-                        pending_generate.content = Some(segment);
-                    }
-                }
-                Err(e) => {
-                    let mut pending_generate = self.pending_generate.write().await;
-                    pending_generate.replace(Err(e));
-                    break;
-                }
-            }
-        }
         let message = if let Some(result) = self.pending_generate.write().await.take() {
             result?
         } else {
@@ -291,13 +299,14 @@ impl ChatAPI {
         .await;
         Ok(())
     }
+
     #[instrument(skip(self))]
-    async fn completion(
-        &mut self,
-    ) -> Result<impl Stream<Item = Result<String, anyhow::Error>>, anyhow::Error> {
+    async fn complete(
+        &self,
+    ) -> Result<impl Stream<Item = Result<ChatCompletion, anyhow::Error>>, anyhow::Error> {
         let uri: Uri = Self::URL.parse()?;
 
-        let body = Body::from(serde_json::to_string(&self.chat.write().await.clone())?);
+        let body = Body::from(serde_json::to_string(&self.data.write().await.clone())?);
 
         let mut request_body = Request::new(body);
 
@@ -313,76 +322,8 @@ impl ChatAPI {
             HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap(),
         );
 
-        let mut response = self.client.request(request_body).await?;
-
-        let (sender, receiver) = mpsc::channel::<Result<String, anyhow::Error>>(100);
-
-        let mut _self = self.clone();
-        tokio::spawn(async move {
-            let res: Result<(), anyhow::Error> = 'stream: {
-                let mut pending_generate = ResponseChatMessage::default();
-                while let Some(chunk) = response.body_mut().data().await {
-                    let chunk = match chunk {
-                        Ok(chunk) => chunk,
-                        Err(e) => {
-                            tracing::error!("{}", e);
-                            break 'stream Err(e.into());
-                        }
-                    };
-                    for raw in std::str::from_utf8(&chunk)
-                        .unwrap()
-                        .split("data: ")
-                        .filter_map(|v| v.trim().is_empty().not().then_some(v))
-                    {
-                        if raw.starts_with("[DONE]") {
-                            tracing::info!("received: [DONE]");
-                            break 'stream Ok(());
-                        }
-                        tracing::info!("received: {}", raw);
-                        let chat_completion = match serde_json::from_str::<ChatCompletion>(&raw) {
-                            Ok(chat_completion) => chat_completion,
-                            Err(e) => {
-                                tracing::error!("error: {}", e);
-                                break 'stream Err(e.into());
-                            }
-                        };
-                        if let Some(error) = &chat_completion.error {
-                            tracing::error!("error: {}", error.message);
-                            break 'stream Err(anyhow::anyhow!(error.message.clone()));
-                        }
-                        let Some(choices) = &chat_completion.choices else {
-                            continue;
-                        };
-                        let Some(first_choice) = &choices.first() else{
-                            continue;
-                        };
-                        let message = &first_choice.delta;
-
-                        if let Some(role) = &message.role {
-                            pending_generate.role.replace(role.clone());
-                        }
-                        let Some(content) = &message.content else {
-                            continue;
-                        };
-                        if content == "\n\n" {
-                            continue;
-                        }
-                        if let Some(old_content) = pending_generate.content.as_mut() {
-                            old_content.push_str(content);
-                        } else {
-                            pending_generate.content.replace(content.clone());
-                        }
-                        sender.send(Ok(content.clone())).await.unwrap();
-                    }
-                }
-                Ok(())
-            };
-            if let Err(e) = res {
-                tracing::error!("{}", e);
-                _self.pending_generate.write().await.take();
-                sender.send(Err(e)).await.unwrap();
-            }
-        });
-        Ok(ReceiverStream::new(receiver))
+        let response = self.client.request(request_body).await?;
+        let stream = fetch_sse::<ChatCompletion>(response);
+        Ok(stream)
     }
 }
