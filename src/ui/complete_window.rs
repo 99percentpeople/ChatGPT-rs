@@ -39,8 +39,10 @@ impl View for CompleteWindow {
             tokio::task::block_in_place(|| self.complete.pending_generate.blocking_read().clone());
         let is_ready = self.promise.is_none();
         if let Some(generate) = generate {
-            self.text = generate;
-            ui.ctx().request_repaint();
+            if !is_ready {
+                self.text = generate;
+                ui.ctx().request_repaint();
+            }
         }
         if let Some(promise) = &self.promise {
             if let Some(text) = promise.ready() {
@@ -75,6 +77,14 @@ impl View for CompleteWindow {
                         .then(|| {
                             if let Some(promise) = self.promise.take() {
                                 promise.abort();
+                                let mut complete = self.complete.clone();
+                                tokio::spawn(async move {
+                                    let pending_generate =
+                                        complete.pending_generate.write().await.take();
+                                    if let Some(text) = pending_generate {
+                                        complete.set_prompt(text).await;
+                                    }
+                                });
                             }
                         });
                 }

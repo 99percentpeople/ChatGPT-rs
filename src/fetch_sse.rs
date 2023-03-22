@@ -38,13 +38,15 @@ where
                             break 'stream Err(e.into());
                         }
                     };
-                    sender.send(Ok(completion)).await.unwrap();
+                    if let Err(_) = sender.send(Ok(completion)).await {
+                        return;
+                    }
                 }
             }
             Ok(())
         };
         if let Err(e) = res {
-            sender.send(Err(e)).await.unwrap();
+            sender.send(Err(e)).await.ok();
         }
     });
     ReceiverStream::new(receiver)
