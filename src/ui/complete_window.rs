@@ -37,12 +37,12 @@ impl View for CompleteWindow {
     fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
         let generate =
             tokio::task::block_in_place(|| self.complete.pending_generate.blocking_read().clone());
-        let is_ready = self.promise.is_none();
+        let is_ready = generate.is_none() && self.promise.is_none();
+        if !is_ready {
+            ui.ctx().request_repaint();
+        }
         if let Some(generate) = generate {
-            if !is_ready {
-                self.text = generate;
-                ui.ctx().request_repaint();
-            }
+            self.text = generate;
         }
         if let Some(promise) = &self.promise {
             if let Some(text) = promise.ready() {

@@ -255,7 +255,6 @@ impl super::View for LoggerUi {
         egui::TopBottomPanel::top("lg_top").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Search: ");
-
                 let response = ui.text_edit_singleline(&mut self.search_term);
                 ui.button("ｘ").clicked().then(|| self.search_term.clear());
                 let mut config_changed = false;
@@ -283,7 +282,7 @@ impl super::View for LoggerUi {
                         .ok()
                 };
             });
-            ui.collapsing("Filter 🎛️", |ui| {
+            ui.collapsing("Filter", |ui| {
                 egui::Grid::new("filter_grid")
                     .num_columns(2)
                     .show(ui, |ui| {

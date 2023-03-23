@@ -1,13 +1,13 @@
-use crate::api::chat::{ChatAPI, Role};
-use eframe::{egui, epaint};
-use egui_notify::Toasts;
-use std::{
-    sync::{atomic, Arc},
-    time::Duration,
+use crate::api::{
+    chat::{ChatAPI, Role},
+    ParameterControl,
 };
+use eframe::egui;
+use egui_notify::Toasts;
+use std::sync::{atomic, Arc};
 use tokio::task::JoinHandle;
 
-use super::{model_table::ModelTable, parameter_control::ParameterControl, ModelType, View};
+use super::{model_table::ModelTable, parameter_control::ParameterControler, ModelType, View};
 
 pub struct ChatWindow {
     chatgpt: ChatAPI,
@@ -17,7 +17,7 @@ pub struct ChatWindow {
     show_model_table: bool,
     show_parameter_control: bool,
     model_table: ModelTable,
-    parameter_control: ParameterControl,
+    parameter_control: ParameterControler,
     toasts: Toasts,
 }
 
@@ -26,15 +26,7 @@ impl ChatWindow {
         egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Enter);
     pub fn new(chatgpt: ChatAPI) -> Self {
         let model_table = ModelTable::new(ModelType::Chat);
-        let param = tokio::task::block_in_place(|| chatgpt.data.blocking_read().clone());
-
-        let mut parameter_control = ParameterControl::default();
-        parameter_control.set_max_token_checked(param.max_tokens.is_some());
-        parameter_control.set_max_tokens(param.max_tokens.unwrap_or(2048));
-        parameter_control.set_temperature(param.temperature.unwrap_or(1.));
-        parameter_control.set_frequency_penalty(param.frequency_penalty.unwrap_or(0.));
-        parameter_control.set_presence_penalty(param.presence_penalty.unwrap_or(0.));
-        parameter_control.set_top_p(param.top_p.unwrap_or(1.));
+        let parameter_control = ParameterControler::new(chatgpt.params());
         Self {
             chatgpt,
             text: String::new(),
@@ -106,31 +98,7 @@ impl super::View for ChatWindow {
             ui,
             self.show_parameter_control,
             |ui| {
-                let mut chatgpt = self.chatgpt.clone();
-                match self.parameter_control.ui(ui) {
-                    super::parameter_control::ResponseEvent::MaxTokens(max_tokens) => {
-                        tokio::spawn(async move { chatgpt.set_max_tokens(max_tokens).await });
-                    }
-                    super::parameter_control::ResponseEvent::Temperature(temperature) => {
-                        tokio::spawn(async move { chatgpt.set_temperature(temperature).await });
-                    }
-                    super::parameter_control::ResponseEvent::TopP(top_p) => {
-                        tokio::spawn(async move { chatgpt.set_top_p(top_p).await });
-                    }
-                    super::parameter_control::ResponseEvent::PresencePenalty(presence_penalty) => {
-                        tokio::spawn(async move {
-                            chatgpt.set_presence_penalty(presence_penalty).await
-                        });
-                    }
-                    super::parameter_control::ResponseEvent::FrequencyPenalty(
-                        frequency_penalty,
-                    ) => {
-                        tokio::spawn(async move {
-                            chatgpt.set_frequency_penalty(frequency_penalty).await
-                        });
-                    }
-                    super::parameter_control::ResponseEvent::None => {}
-                }
+                self.parameter_control.ui(ui);
             },
         );
 
@@ -224,46 +192,36 @@ impl super::View for ChatWindow {
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        for message in chat.messages {
-                            message_container(
+                        for msg in chat.messages {
+                            message(
                                 ui,
                                 |ui| {
-                                    let content = message.content.to_string();
-                                    ui.add(
-                                        egui::Label::new(egui::RichText::new(&content))
-                                            .sense(egui::Sense::click()),
-                                    )
-                                    .clicked()
-                                    .then(|| {
-                                        ui.output_mut(|o| o.copied_text = content);
-                                        self.toasts
-                                            .success("Copied")
-                                            .set_closable(false)
-                                            .set_duration(Some(Duration::from_secs(1)));
-                                    });
+                                    let content = msg.content.to_string();
+                                    selectable_text(ui, &content);
                                 },
-                                &message.role,
+                                &msg.role,
                             );
                         }
                         if let Some(generate) = &generate_text {
                             {
-                                message_container(
+                                message(
                                     ui,
                                     |ui| {
-                                        ui.label(generate);
+                                        selectable_text(ui, &generate);
                                     },
                                     &Role::Assistant,
                                 );
                             }
                             ui.ctx().request_repaint();
                         } else if is_error {
-                            message_container(
+                            message(
                                 ui,
                                 |ui| {
-                                    ui.label(
-                                        egui::RichText::new(generate_text.unwrap())
-                                            .color(epaint::Color32::RED),
-                                    );
+                                    selectable_text(ui, &generate_text.unwrap());
+                                    // ui.label(
+                                    //     egui::RichText::new(generate_text.unwrap())
+                                    //         .color(epaint::Color32::RED),
+                                    // );
                                     ui.button("Retry")
                                 },
                                 &Role::Assistant,
@@ -274,7 +232,7 @@ impl super::View for ChatWindow {
                                 tokio::spawn(async move { chat.generate().await })
                             });
                         } else if !is_ready {
-                            message_container(
+                            message(
                                 ui,
                                 |ui| {
                                     ui.spinner();
@@ -289,24 +247,24 @@ impl super::View for ChatWindow {
     }
 }
 
-pub fn message_container<R>(
+pub fn message<R>(
     ui: &mut egui::Ui,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
     role: &Role,
 ) -> R {
-    ui.horizontal(|ui| {
-        ui.with_layout(
-            match role {
-                Role::User => egui::Layout::right_to_left(egui::Align::Min).with_main_wrap(true),
-                Role::Assistant => {
-                    egui::Layout::left_to_right(egui::Align::Min).with_main_wrap(true)
-                }
-                Role::System => egui::Layout::centered_and_justified(egui::Direction::TopDown)
-                    .with_main_wrap(true),
-            },
-            |ui| ui.group(|ui| add_contents(ui)).inner,
-        )
+    ui.group(|ui| {
+        ui.vertical(|ui| {
+            ui.label(format!("{}: ", role.to_string()));
+            add_contents(ui)
+        })
         .inner
     })
     .inner
+}
+
+fn selectable_text(ui: &mut egui::Ui, mut text: &str) {
+    egui::TextEdit::multiline(&mut text)
+        .desired_width(f32::INFINITY)
+        .desired_rows(1)
+        .show(ui);
 }

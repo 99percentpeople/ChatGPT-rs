@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![feature(is_some_and)]
+#![feature(fn_traits)]
+#![feature(specialization)]
 use eframe::egui;
 use std::error::Error;
 use tracing::Level;

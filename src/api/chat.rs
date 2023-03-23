@@ -1,15 +1,20 @@
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Request, Uri};
 use serde::{Deserialize, Serialize};
+use strum::Display;
 use tracing::instrument;
 
 use crate::client::MultiClient;
 use crate::fetch_sse::fetch_sse;
 use futures::StreamExt;
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_stream::Stream;
+
+use super::{Param, Parameter, ParameterControl};
 
 /// POST https://api.openai.com/v1/chat/completions
 ///
@@ -67,7 +72,7 @@ pub struct Chat {
     /// decreasing the model's likelihood to repeat the same line verbatim.
     pub frequency_penalty: Option<f32>,
 }
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Display, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     User,
@@ -178,21 +183,6 @@ impl ChatAPI {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
     const DEFAULT_MODEL: &'static str = "gpt-3.5-turbo";
 
-    pub async fn set_max_tokens(&mut self, max_tokens: Option<u32>) {
-        self.data.write().await.max_tokens = max_tokens;
-    }
-    pub async fn set_temperature(&mut self, temperature: f32) {
-        self.data.write().await.temperature = Some(temperature);
-    }
-    pub async fn set_presence_penalty(&mut self, presence_penalty: f32) {
-        self.data.write().await.presence_penalty = Some(presence_penalty);
-    }
-    pub async fn set_frequency_penalty(&mut self, frequency_penalty: f32) {
-        self.data.write().await.frequency_penalty = Some(frequency_penalty);
-    }
-    pub async fn set_top_p(&mut self, top_p: f32) {
-        self.data.write().await.top_p = Some(top_p);
-    }
     pub async fn set_model(&mut self, model: String) {
         self.data.write().await.model = model;
     }
@@ -325,5 +315,120 @@ impl ChatAPI {
         let response = self.client.request(request_body).await?;
         let stream = fetch_sse::<ChatCompletion>(response);
         Ok(stream)
+    }
+}
+impl ParameterControl for ChatAPI {
+    fn params(&self) -> Vec<Box<dyn super::Parameter>> {
+        let mut v = Vec::new();
+        v.push(Box::new(Param {
+            name: "max_tokens",
+            range: (1, 2048).into(),
+            store: Cell::new(tokio::task::block_in_place(|| {
+                self.data.blocking_read().max_tokens
+            })),
+            default: 2048.into(),
+            getter: {
+                let data = self.data.clone();
+                Box::new(move || tokio::task::block_in_place(|| data.blocking_read().max_tokens))
+            },
+            setter: {
+                let data = self.data.clone();
+                Box::new(move |max_tokens| {
+                    let data = data.clone();
+                    tokio::spawn(async move {
+                        data.write().await.max_tokens = max_tokens;
+                    });
+                })
+            },
+        }) as Box<dyn Parameter>);
+        v.push(Box::new(Param {
+            name: "temperature",
+            range: (0., 2.).into(),
+            default: (1.).into(),
+            store: Cell::new(1.),
+            getter: {
+                let data = self.data.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| data.blocking_read().temperature.unwrap_or(1.))
+                })
+            },
+            setter: {
+                let data = self.data.clone();
+                Box::new(move |temperature| {
+                    let data = data.clone();
+                    tokio::spawn(async move {
+                        data.write().await.temperature = Some(temperature);
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param {
+            name: "top_p",
+            range: (0., 2.).into(),
+            default: (1.).into(),
+            store: Cell::new(1.),
+            getter: {
+                let data = self.data.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| data.blocking_read().top_p.unwrap_or(1.))
+                })
+            },
+            setter: {
+                let data = self.data.clone();
+                Box::new(move |top_p| {
+                    let data = data.clone();
+                    tokio::spawn(async move {
+                        data.write().await.top_p = Some(top_p);
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param {
+            name: "presence_penalty",
+            range: (-2., 2.).into(),
+            default: (0.).into(),
+            store: Cell::new(0.),
+            getter: {
+                let data = self.data.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| {
+                        data.blocking_read().presence_penalty.unwrap_or(0.)
+                    })
+                })
+            },
+            setter: {
+                let data = self.data.clone();
+                Box::new(move |presence_penalty| {
+                    let data = data.clone();
+                    tokio::spawn(async move {
+                        data.write().await.presence_penalty = Some(presence_penalty);
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param {
+            name: "frequency_penalty",
+            range: (-2., 2.).into(),
+            default: (0.).into(),
+            store: Cell::new(0.),
+            getter: {
+                let data = self.data.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| {
+                        data.blocking_read().frequency_penalty.unwrap_or(0.)
+                    })
+                })
+            },
+            setter: {
+                let data = self.data.clone();
+                Box::new(move |frequency_penalty| {
+                    let data = data.clone();
+                    tokio::spawn(async move {
+                        data.write().await.frequency_penalty = Some(frequency_penalty);
+                    });
+                })
+            },
+        }));
+        v
     }
 }

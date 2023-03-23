@@ -4,8 +4,14 @@ mod complete_window;
 pub mod logger;
 mod model_table;
 mod parameter_control;
+
 use self::{chat_list::ChatList, logger::LoggerUi};
 use eframe::egui;
+use font_kit::{
+    family_name::FamilyName,
+    properties::{Properties, Weight},
+    source::SystemSource,
+};
 use strum::{Display, EnumIter};
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, Display)]
@@ -53,15 +59,16 @@ impl eframe::App for ChatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if let Some(window) = &mut self.window {
-                    window.actions(ui);
-                    ui.separator();
-                }
                 for (view, show) in self.widgets.iter_mut() {
                     ui.selectable_label(*show, view.name()).clicked().then(|| {
                         *show = !*show;
                     });
                 }
+                ui.separator();
+                if let Some(window) = &mut self.window {
+                    window.actions(ui);
+                }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     egui::global_dark_light_mode_switch(ui);
                     ui.separator();
@@ -102,24 +109,34 @@ impl eframe::App for ChatApp {
 fn setup_fonts(ctx: &egui::Context) {
     // Start with the default fonts (we will be adding to them rather than replacing them).
     let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert(
-        "msyhl".to_owned(),
-        egui::FontData::from_static(include_bytes!("c:\\windows\\fonts\\msyhl.ttc")),
-    );
-    fonts.font_data.insert(
-        "seguiemj".to_owned(),
-        egui::FontData::from_static(include_bytes!("c:\\windows\\fonts\\seguiemj.ttf")),
-    );
+    let source = SystemSource::new();
+    let Ok(font) = source
+        .select_best_match(
+            &[FamilyName::Title("微软雅黑".to_owned())],
+            &Properties::new().weight(Weight::NORMAL),
+        )
+        else {
+            return;
+        };
+    let Ok(font) = font.load() else {
+        return;
+    };
+    tracing::info!("Using font: {:?}", font);
+    let Some(font_data) = font.copy_font_data() else {
+        return;
+    };
+    let data = Box::leak((*font_data).clone().into_boxed_slice());
+
+    fonts
+        .font_data
+        .insert("system".to_owned(), egui::FontData::from_static(data));
+
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
-        .insert(0, "msyhl".to_owned());
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .insert(1, "seguiemj".to_owned());
+        .insert(0, "system".to_owned());
+
     ctx.set_fonts(fonts);
 }
 

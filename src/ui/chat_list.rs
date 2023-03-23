@@ -23,6 +23,7 @@ pub struct ChatList {
     complete_list: HashMap<String, CompleteAPI>,
     text: String,
     select_type: ModelType,
+    select: Option<String>,
 }
 
 impl Default for ChatList {
@@ -32,6 +33,7 @@ impl Default for ChatList {
             complete_list: HashMap::new(),
             text: String::new(),
             select_type: ModelType::Chat,
+            select: None,
         }
     }
 }
@@ -71,9 +73,15 @@ impl ChatList {
         )))
     }
     pub fn remove_chat(&mut self, name: &str) -> Option<ChatAPI> {
+        if self.select.as_ref().is_some_and(|s| s == name) {
+            self.select = None;
+        }
         self.chat_list.remove(name)
     }
     pub fn remove_complete(&mut self, name: &str) -> Option<CompleteAPI> {
+        if self.select.as_ref().is_some_and(|s| s == name) {
+            self.select = None;
+        }
         self.complete_list.remove(name)
     }
     pub fn save(&self) -> Result<(), anyhow::Error> {
@@ -108,6 +116,8 @@ impl ChatList {
             let completes = serde_json::from_value::<HashMap<String, Complete>>(
                 value.get("complete").ok_or(anyhow::anyhow!(""))?.clone(),
             )?;
+            self.chat_list.clear();
+            self.complete_list.clear();
             Handle::current().block_on(async {
                 for (name, chat) in chats {
                     self.chat_list.insert(
@@ -176,62 +186,75 @@ impl super::View for ChatList {
                 ui.button("Load").clicked().then(|| {
                     if let Err(e) = self.load() {
                         tracing::error!("Error loading chats: {}", e);
+                    } else {
+                        event = ResponseEvent::Remove;
                     }
                 });
             });
         });
-        egui::CollapsingHeader::new("Chat")
-            .default_open(true)
-            .show(ui, |ui| {
-                egui::Grid::new("list").striped(true).show(ui, |ui| {
-                    ui.label("Name");
-                    ui.label("Action");
-                    ui.end_row();
-
-                    for (name, chat) in self.chat_list.iter() {
-                        ui.label(name);
-                        if ui.button("remove").clicked() {
-                            remove_chat = Some(name.clone());
-                        };
-                        if ui.button("select").clicked() {
-                            event = ResponseEvent::Select(Box::new(ChatWindow::new(chat.clone())));
-                        }
-
+        if !self.chat_list.is_empty() {
+            egui::CollapsingHeader::new("Chat")
+                .default_open(true)
+                .show(ui, |ui| {
+                    egui::Grid::new("list").striped(true).show(ui, |ui| {
+                        ui.label("Name");
+                        ui.label("Action");
                         ui.end_row();
-                    }
-                });
-            });
-        egui::CollapsingHeader::new("Complete")
-            .default_open(true)
-            .show(ui, |ui| {
-                egui::Grid::new("list").striped(true).show(ui, |ui| {
-                    ui.label("Name");
-                    ui.label("Action");
-                    ui.end_row();
 
-                    for (name, complete) in self.complete_list.iter() {
-                        ui.label(name);
-                        if ui.button("remove").clicked() {
-                            remove_complete = Some(name.clone());
-                        };
-                        if ui.button("select").clicked() {
-                            event = ResponseEvent::Select(Box::new(CompleteWindow::new(
-                                complete.clone(),
-                            )));
+                        for (name, chat) in self.chat_list.iter() {
+                            ui.label(name);
+                            if ui.button("remove").clicked() {
+                                remove_chat = Some(name.clone());
+                            };
+                            if ui.button("select").clicked() {
+                                event =
+                                    ResponseEvent::Select(Box::new(ChatWindow::new(chat.clone())));
+                            }
+
+                            ui.end_row();
                         }
-
-                        ui.end_row();
-                    }
+                    });
                 });
-            });
+        }
+        if !self.complete_list.is_empty() {
+            egui::CollapsingHeader::new("Complete")
+                .default_open(true)
+                .show(ui, |ui| {
+                    egui::Grid::new("list").striped(true).show(ui, |ui| {
+                        ui.label("Name");
+                        ui.label("Action");
+                        ui.end_row();
+
+                        for (name, complete) in self.complete_list.iter() {
+                            ui.label(name);
+                            if ui.button("remove").clicked() {
+                                remove_complete = Some(name.clone());
+                            };
+                            if ui.button("select").clicked() {
+                                event = ResponseEvent::Select(Box::new(CompleteWindow::new(
+                                    complete.clone(),
+                                )));
+                            }
+
+                            ui.end_row();
+                        }
+                    });
+                });
+        }
+        if let Some(select) = &self.select {
+            if remove_chat.as_ref().is_some_and(|v| v == select)
+                || remove_complete.as_ref().is_some_and(|v| v == select)
+            {
+                event = ResponseEvent::Remove;
+            }
+        }
         if let Some(name) = remove_chat {
             self.remove_chat(&name);
-            return ResponseEvent::Remove;
         }
         if let Some(name) = remove_complete {
             self.remove_complete(&name);
-            return ResponseEvent::Remove;
         }
+
         event
     }
 }
