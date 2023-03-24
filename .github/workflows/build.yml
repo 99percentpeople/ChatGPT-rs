@@ -18,6 +18,12 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary-name: chatgpt-rs
             archive-name: chatgpt-rs-linux.tar.gz
+          - build: macos
+            os: macos-latest
+            rust: nightly
+            target: x86_64-apple-darwin
+            binary-name: chatgpt-rs
+            archive-name: chatgpt-rs-macos.tar.gz
           - build: windows
             os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -46,8 +52,8 @@ jobs:
         with:
           command: build
           args: --release --target=${{ matrix.target }}
-      - name: Strip binary (linux)
-        if: matrix.build == 'linux'
+      - name: Strip binary (linux and macos)
+        if: matrix.build == 'linux' || matrix.build == 'macos'
         run: strip "target/${{ matrix.target }}/release/${{ matrix.binary-name }}"
       - name: Build archive
         shell: bash

@@ -2,6 +2,18 @@
 
 ChatGPT-rs is a lightweight ChatGPT client with a graphical user interface, written in Rust. It allows you to chat with OpenAI's GPT models through a simple and intuitive interface.
 
+## Features
+
+ChatGPT-rs provides the following features:
+
+- :computer: **User-friendly GUI:** ChatGPT-rs has an intuitive graphical user interface that makes it easy to use.
+- :floppy_disk: **Lightweight:** Despite its graphical interface, ChatGPT-rs is a lightweight application with a small file size (6MB on Windows).
+- :thumbsup: **Easy to use:** ChatGPT-rs can be used as soon as it is downloaded without the need for any additional deployment steps.
+- :wrench: **Flexible API customization:** ChatGPT-rs allows you to customize your API key and proxy settings to fit your specific needs.
+- :page_facing_up: **Conversation history:** ChatGPT-rs allows you to save and access conversation history, so you can review past conversations.
+- :iphone: **Compatibility:** ChatGPT-rs is designed to work on multiple platforms, including Windows, Mac, and Linux.
+
+
 ![1](./image/1.png)
 
 ## Getting Started
