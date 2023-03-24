@@ -35,12 +35,12 @@ pub enum Level {
 
 impl From<&metadata::Level> for Level {
     fn from(value: &metadata::Level) -> Self {
-        match value {
-            &metadata::Level::ERROR => Self::Error,
-            &metadata::Level::WARN => Self::Warn,
-            &metadata::Level::INFO => Self::Info,
-            &metadata::Level::DEBUG => Self::Debug,
-            &metadata::Level::TRACE => Self::Trace,
+        match *value {
+            metadata::Level::ERROR => Self::Error,
+            metadata::Level::WARN => Self::Warn,
+            metadata::Level::INFO => Self::Info,
+            metadata::Level::DEBUG => Self::Debug,
+            metadata::Level::TRACE => Self::Trace,
         }
     }
 }
@@ -166,7 +166,7 @@ where
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
         let spans = ctx
             .event_scope(event)
-            .and_then(|scope| Some(scope.map(LogOutput::from).collect()));
+            .map(|scope| scope.map(LogOutput::from).collect());
 
         let mut fields = BTreeMap::new();
         let mut visitor = JsonVisitor(&mut fields);
@@ -226,14 +226,12 @@ impl LoggerUi {
                 // Failed to compile
                 false
             }
+        } else if self.search_case_sensitive {
+            string.contains(&self.search_term)
         } else {
-            if self.search_case_sensitive {
-                string.contains(&self.search_term)
-            } else {
-                string
-                    .to_lowercase()
-                    .contains(&self.search_term.to_lowercase())
-            }
+            string
+                .to_lowercase()
+                .contains(&self.search_term.to_lowercase())
         }
     }
 }
@@ -340,7 +338,7 @@ impl super::View for LoggerUi {
             });
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            let log_levels = self.log_levels.clone();
+            let log_levels = self.log_levels;
             let logs_iter = logs
                 .iter()
                 .filter(|log| log_levels[log.level as usize])
@@ -348,8 +346,7 @@ impl super::View for LoggerUi {
                     if let Some(spans) = &log.spans {
                         spans
                             .iter()
-                            .find(|span| span.name.contains(&self.span_filter))
-                            .is_some()
+                            .any(|span| span.name.contains(&self.span_filter))
                     } else {
                         self.span_filter.is_empty()
                     }
@@ -386,7 +383,7 @@ impl super::View for LoggerUi {
                             },
                         );
                         job.append(
-                            &content,
+                            content,
                             0.,
                             TextFormat {
                                 ..Default::default()
@@ -396,7 +393,7 @@ impl super::View for LoggerUi {
                         ui.add(egui::Label::new(job));
 
                         self.logs_displayed += 1;
-                        self.copy_text += &content;
+                        self.copy_text += content;
                     });
                 });
         });

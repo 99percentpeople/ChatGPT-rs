@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         eframe::run_native(
             "Chat App",
             options,
-            Box::new(|cc| Box::new(ui::ChatApp::new(&cc))),
+            Box::new(|cc| Box::new(ui::ChatApp::new(cc))),
         )
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
         Ok::<(), anyhow::Error>(())

@@ -31,14 +31,14 @@ where
                         tracing::info!("received: [DONE]");
                         break 'stream Ok(());
                     }
-                    let completion = match serde_json::from_str::<C>(&raw) {
+                    let completion = match serde_json::from_str::<C>(raw) {
                         Ok(chat_completion) => chat_completion,
                         Err(e) => {
                             tracing::error!("error: {}", e);
                             break 'stream Err(e.into());
                         }
                     };
-                    if let Err(_) = sender.send(Ok(completion)).await {
+                    if (sender.send(Ok(completion)).await).is_err() {
                         return;
                     }
                 }

@@ -113,7 +113,7 @@ fn setup_fonts(ctx: &egui::Context) {
     let Ok(font) = source
         .select_best_match(
             &[FamilyName::Title("微软雅黑".to_owned())],
-            &Properties::new().weight(Weight::NORMAL),
+            Properties::new().weight(Weight::NORMAL),
         )
         else {
             return;

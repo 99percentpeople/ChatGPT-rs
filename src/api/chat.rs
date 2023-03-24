@@ -79,19 +79,10 @@ pub enum Role {
     Assistant,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub struct ResponseChatMessage {
     pub role: Option<Role>,
     pub content: Option<String>,
-}
-
-impl Default for ResponseChatMessage {
-    fn default() -> Self {
-        Self {
-            role: None,
-            content: None,
-        }
-    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -224,10 +215,7 @@ impl ChatAPI {
         tokio::task::block_in_place(|| {
             let pending_generate = self.pending_generate.blocking_read();
             match pending_generate.as_ref() {
-                Some(Ok(v)) => match &v.content {
-                    Some(content) => Some(Ok(content.clone())),
-                    None => None,
-                },
+                Some(Ok(v)) => v.content.as_ref().map(|content| Ok(content.clone())),
                 Some(Err(e)) => Some(Err(e.to_string())),
                 None => None,
             }
@@ -250,7 +238,7 @@ impl ChatAPI {
                 Ok(res) => res,
                 Err(e) => {
                     tracing::error!("Error while generating: {:?}", e);
-                    self.pending_generate.write().await.replace(Err(e.into()));
+                    self.pending_generate.write().await.replace(Err(e));
                     break;
                 }
             };

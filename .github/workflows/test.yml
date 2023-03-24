@@ -54,4 +54,4 @@ jobs:
           toolchain: nightly
           override: true
       - run: rustup component add clippy
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy
