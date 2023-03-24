@@ -15,7 +15,7 @@ eframe = { version = "0.21", default-features = false, features = [
 ] }
 dotenv = "0.15.0"
 hyper = { version = "0.14", features = ["full"] }
-hyper-tls = "0.5"
+hyper-tls = { version = "0.5", features = ["vendored"] }
 hyper-proxy = "0.9.1"
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
