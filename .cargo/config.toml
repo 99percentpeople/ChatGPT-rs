@@ -5,5 +5,3 @@ rustflags = [
     "-Lnative=.xwin-cache/splat/sdk/lib/um/x86_64",
     "-Lnative=.xwin-cache/splat/sdk/lib/ucrt/x86_64",
 ]
-[target.aarch64-unknown-linux-musl]
-linker = "aarch64-unknown-linux-musl-gcc"
