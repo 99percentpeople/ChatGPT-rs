@@ -23,7 +23,7 @@ jobs:
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
-        target: ${{  ${{ matrix.target }} }}
+        target: ${{ matrix.target }}
         override: true
     - uses: actions-rs/cargo@v1
       with:
