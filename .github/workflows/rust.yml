@@ -1,0 +1,40 @@
+name: Rust
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-pc-windows-msvc
+          - x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install pkg-config
+        run: sudo apt-get install -y pkg-config
+      - name: Install lld
+        run: sudo apt-get install -y lld
+      - name: Install egui dependencies
+        run: sudo apt-get install -y libclang-dev libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+      - name: Install xwin
+        run: cargo install xwin
+      - name: Download Microsoft Windows SDKs
+        run: xwin --accept-license splat
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          target: ${{ matrix.target }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target=${{ matrix.target }}

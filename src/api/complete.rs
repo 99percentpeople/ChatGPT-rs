@@ -77,9 +77,9 @@ impl CompleteAPI {
                 continue;
             };
             let text = &first_choice.text;
-            if text == "\n\n" || text == "\n\n\n" {
-                continue;
-            }
+            // if text == "\n\n" || text == "\n\n\n" {
+            //     continue;
+            // }
             pending_generate.push_str(&text);
         }
         let Some(text) = self.pending_generate.write().await.take()  else {
