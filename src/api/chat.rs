@@ -9,7 +9,6 @@ use crate::fetch_sse::fetch_sse;
 use futures::StreamExt;
 
 use std::cell::Cell;
-use std::rc::Rc;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_stream::Stream;
@@ -236,7 +235,14 @@ impl ChatAPI {
     }
     pub async fn generate(&mut self) -> Result<(), anyhow::Error> {
         *self.pending_generate.write().await = Some(Ok(ResponseChatMessage::default()));
-        let mut stream = self.complete().await?;
+        let mut stream = match self.complete().await {
+            Ok(stream) => stream,
+            Err(e) => {
+                tracing::error!("Error while generating: {:?}", e);
+                self.pending_generate.write().await.replace(Err(e.into()));
+                return Ok(());
+            }
+        };
         while let Some(res) = stream.next().await {
             let mut pending_generate = self.pending_generate.write().await;
             let pending_generate = pending_generate.as_mut().unwrap().as_mut().unwrap();
@@ -249,6 +255,7 @@ impl ChatAPI {
                 }
             };
             if let Some(error) = &res.error {
+                tracing::error!("Error message from server: {:?}", error);
                 anyhow::bail!(error.message.clone());
             }
             let Some(choices) = &res.choices else {
@@ -264,9 +271,9 @@ impl ChatAPI {
             let Some(content) = &message.content else {
                 continue;
             };
-            if content == "\n\n" || content == "\n\n\n" {
-                continue;
-            }
+            // if content == "\n\n" || content == "\n\n\n" {
+            //     continue;
+            // }
             if let Some(old_content) = pending_generate.content.as_mut() {
                 old_content.push_str(content);
             } else {
