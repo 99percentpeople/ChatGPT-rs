@@ -6,6 +6,13 @@ edition = "2021"
 [profile.release]
 lto = true
 opt-level = "z"
+[target.x86_64-pc-windows-msvc]
+linker = "lld"
+rustflags = [
+    "-Lnative=~/.xwin/crt/lib/x86_64",
+    "-Lnative=~/.xwin/sdk/lib/um/x86_64",
+    "-Lnative=~/.xwin/sdk/lib/ucrt/x86_64",
+]
 [dependencies]
 eframe = { version = "0.21", default-features = false, features = [
     "glow",
