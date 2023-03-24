@@ -9,7 +9,6 @@ opt-level = "z"
 [dependencies]
 eframe = { version = "0.21", default-features = false, features = [
     "glow",
-    "accesskit",
     "dark-light",
 ] }
 dotenv = "0.15.0"

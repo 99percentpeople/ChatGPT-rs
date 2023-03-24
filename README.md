@@ -7,9 +7,9 @@ ChatGPT-rs is a lightweight ChatGPT client with a graphical user interface, writ
 ChatGPT-rs provides the following features:
 
 - :computer: **User-friendly GUI:** ChatGPT-rs has an intuitive graphical user interface that makes it easy to use.
-- :floppy_disk: **Lightweight:** Despite its graphical interface, ChatGPT-rs is a lightweight application with a small file size (6MB on Windows).
+- :floppy_disk: **Lightweight:** ChatGPT-rs is a small application with a download size of approximately 6MB on Windows.
 - :thumbsup: **Easy to use:** ChatGPT-rs can be used as soon as it is downloaded without the need for any additional deployment steps.
-- :wrench: **Flexible API customization:** ChatGPT-rs allows you to customize your API key and proxy settings to fit your specific needs.
+- :wrench: **Model parameter tuning:** ChatGPT-rs allows you to fine-tune the GPT model by adjusting the model parameters, allowing for more customized responses.
 - :page_facing_up: **Conversation history:** ChatGPT-rs allows you to save and access conversation history, so you can review past conversations.
 - :iphone: **Compatibility:** ChatGPT-rs is designed to work on multiple platforms, including Windows, Mac, and Linux.
 
@@ -20,7 +20,7 @@ ChatGPT-rs provides the following features:
 
 ### Downloading
 
-You can download the latest release of ChatGPT-rs from the [Releases](https://github.com/LitangDingzhen/chatgpt-rs/releases) page on GitHub. Choose the appropriate package for your operating system and follow the instructions to download and extract it to a directory of your choice.
+You can download the latest release of ChatGPT-rs from the [Releases](https://github.com/99percentpeople/chatgpt-rs/releases) page on GitHub. Choose the appropriate package for your operating system and follow the instructions to download and extract it to a directory of your choice.
 
 ### Usage
 
