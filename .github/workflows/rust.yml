@@ -52,7 +52,7 @@ jobs:
         if: matrix.build == 'linux'
         run: strip "target/${{ matrix.target }}/release/${{ matrix.binary-name }}"
       - name: Strip binary (windows)
-        if: matrix.build == 'linux'
+        if: matrix.build == 'windows'
         run: strip "target/${{ matrix.target }}/release/${{ matrix.binary-name }}"
       - name: Build archive
         shell: bash
