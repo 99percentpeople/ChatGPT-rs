@@ -1,25 +1,59 @@
-# chatgpt-rs
+# ChatGPT-rs
 
-这是一个使用OpenAI GPT模型的聊天程序，您可以与一个自然语言处理模型互动。试试看吧，您可以与ChatGPT聊天，探讨任何您感兴趣的话题，无论是科技、文化、娱乐或是其他任何主题。
+ChatGPT-rs is a lightweight ChatGPT client with a graphical user interface, written in Rust. It allows you to chat with OpenAI's GPT models through a simple and intuitive interface.
 
 ![1](./image/1.png)
 
-## 如何使用？
+## Getting Started
 
-1. 在[OpenAI API官网](https://beta.openai.com/)上申请API密钥。
+### Downloading
 
-2. 在项目根目录中创建`.env`文件，将申请得到的API密钥放入对应的位置，格式为`OPENAI_API_KEY=YOUR_SECRET_KEY`。
+You can download the latest release of ChatGPT-rs from the [Releases](https://github.com/LitangDingzhen/chatgpt-rs/releases) page on GitHub. Choose the appropriate package for your operating system and follow the instructions to download and extract it to a directory of your choice.
 
-3. 如果您需要使用HTTP代理，则在`.env`文件中添加`HTTP_PROXY=YOUR_PROXY_ADDRESS`配置。
+### Usage
 
-4. 如果您需要在聊天开始之前储存一条系统信息，在 `.env` 文件中添加 `SYSTEM_MESSAGE=YOUR_MESSAGE` 配置。此时第一条聊天记录将以系统身份进行存储。
+#### API Key
 
-5. 运行`cargo run`。
+Before you can use ChatGPT-rs, you need to obtain an OpenAI API key. To obtain an API key, follow these steps:
 
-## 注意事项
+1. Go to the [OpenAI API](https://beta.openai.com/) website and sign up for an account.
+2. Once you have an account, go to the [Dashboard](https://platform.openai.com/account/api-keys) and click on the "Create new secret key" button.
+3. Follow the instructions to create a new API key.
 
-1. 本程序的用途是提供娱乐和交流，不应用于商业目的。请勿利用本程序进行广告、诈骗或其他非法活动。
+Once you have obtained an API key, create a `.env` file in the root directory of the project and add the following line:
 
-2. 确保您的API密钥的安全性。请不要将密钥泄露给任何人或组织。
+```
+OPENAI_API_KEY=YOUR_SECRET_KEY
+```
 
-3. 如果您要公开分享该程序，请提醒其他用户注意以上事项。
+Replace `YOUR_SECRET_KEY` with your actual API key.
+
+#### Proxy
+
+If you need to use an HTTP proxy to connect to the OpenAI API, you can add the following line to the `.env` file:
+
+```
+HTTP_PROXY=YOUR_PROXY_ADDRESS
+```
+
+Replace `YOUR_PROXY_ADDRESS` with your actual proxy address.
+
+#### System Message
+
+If you need to store a system message before the conversation starts, you can add the following line to the `.env` file:
+
+```
+SYSTEM_MESSAGE=YOUR_MESSAGE
+```
+
+Replace `YOUR_MESSAGE` with your actual system message. The first chat message will be stored as the system message.
+
+### Start Chatting
+
+To start chatting with GPT
+
+You will be prompted to enter the prompt you want to use to start the conversation. After that, you can start chatting with GPT!
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
