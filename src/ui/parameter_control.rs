@@ -28,7 +28,6 @@ impl super::View for ParameterControler {
         let event = ResponseEvent::None;
         egui::Grid::new("grid")
             .num_columns(2)
-            .spacing([40.0, 4.0])
             .striped(true)
             .show(ui, |ui| {
                 for param in self.params.iter() {

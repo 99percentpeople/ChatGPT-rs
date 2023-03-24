@@ -20,12 +20,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::registry()
         .with(Logger::new(Level::TRACE))
         .init();
-    // let span = tracing::span!(Level::DEBUG, "main");
-    // let _enter = span.enter();
 
     let local = tokio::task::LocalSet::new();
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(1024.0, 768.0)),
+        follow_system_theme: true,
         ..Default::default()
     };
     local.spawn_local(async move {
