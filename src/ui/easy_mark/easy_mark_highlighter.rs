@@ -41,11 +41,12 @@ pub fn highlight_easymark(
                 .map_or_else(|| "text", |i| &text[3..3 + i]);
 
             let end = text.find("\n```").map_or_else(|| text.len(), |i| i + 4);
-            // code.push_str(stringify!(text[..end]));
+
             let mut code_job = syntax_highlighting::highlight(ctx, &theme, &text[..end], language);
             let offset = job.text.len();
             code_job.sections.iter_mut().for_each(|s| {
                 s.byte_range = (s.byte_range.start + offset)..(s.byte_range.end + offset);
+                s.format.background = egui_style.visuals.code_bg_color;
             });
 
             job.sections.append(&mut code_job.sections);
@@ -71,21 +72,23 @@ pub fn highlight_easymark(
 
         if text.starts_with('\\') && text.len() >= 2 {
             skip = 2;
-        } else if start_of_line && text.starts_with(' ') {
-            // we don't preview indentation, because it is confusing
-            skip = 1;
-        } else if start_of_line && text.starts_with("# ") {
-            style.heading = true;
+        }
+        // else if start_of_line && text.starts_with(' ') {
+        //     // we don't preview indentation, because it is confusing
+        //     skip = 1;
+        // } else if start_of_line && text.starts_with("# ") {
+        //     style.heading = true;
+        //     skip = 2;
+        // } else if start_of_line && text.starts_with("> ") {
+        //     style.quoted = true;
+        //     skip = 2;
+        //     // we don't preview indentation, because it is confusing
+        // } else if start_of_line && text.starts_with("- ") {
+        //     skip = 2;
+        //     // we don't preview indentation, because it is confusing
+        // }
+        else if text.starts_with("**") {
             skip = 2;
-        } else if start_of_line && text.starts_with("> ") {
-            style.quoted = true;
-            skip = 2;
-            // we don't preview indentation, because it is confusing
-        } else if start_of_line && text.starts_with("- ") {
-            skip = 2;
-            // we don't preview indentation, because it is confusing
-        } else if text.starts_with('*') {
-            skip = 1;
             if style.strong {
                 // Include the character that is ending this style:
                 job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
@@ -111,6 +114,15 @@ pub fn highlight_easymark(
                 skip = 0;
             }
             style.raised ^= true;
+        } else if text.starts_with('*') {
+            skip = 1;
+            if style.italics {
+                // Include the character that is ending this style:
+                job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
+                text = &text[skip..];
+                skip = 0;
+            }
+            style.italics ^= true;
         } else {
             skip = 0;
         }
@@ -120,8 +132,15 @@ pub fn highlight_easymark(
         let line_end = text[skip..]
             .find('\n')
             .map_or_else(|| text.len(), |i| (skip + i + 1));
-        let end = text[skip..]
-            .find(&['*', '`', '~', '_', '/', '$', '^', '\\', '<', '['][..])
+        // let end = text[skip..]
+        //     .find(&['*', '`', '~', '_', '/', '$', '^', '\\', '<', '['][..])
+        //     .map_or_else(|| text.len(), |i| (skip + i).max(1));
+        // // Swallow everything up to the next special character:
+        let special = ["**", "*", "`", "~", "_", "/", "$", "^", "\\", "<", "["];
+        let end = special
+            .iter()
+            .filter_map(|s| text.find(s))
+            .min()
             .map_or_else(|| text.len(), |i| (skip + i).max(1));
 
         if line_end <= end {
@@ -191,11 +210,13 @@ fn format_from_style(
         Align::BOTTOM
     };
 
+    let italics = if emark_style.italics { true } else { false };
+
     egui::text::TextFormat {
         font_id: text_style.resolve(egui_style),
         color,
         background,
-        italics: emark_style.italics,
+        italics,
         underline,
         strikethrough,
         valign,
