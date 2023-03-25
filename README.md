@@ -17,6 +17,8 @@ ChatGPT-rs provides the following features:
 
 ![1](./image/1.png)
 
+![2](./image/2.png)
+
 ## Getting Started
 
 ### Downloading
