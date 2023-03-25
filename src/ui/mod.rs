@@ -30,6 +30,8 @@ pub struct ChatApp {
     window: Option<Box<dyn MainWindow>>,
     chat_list: ChatList,
     widgets: Vec<(Box<dyn Window>, bool)>,
+
+    expand_list: bool,
 }
 impl ChatApp {
     const DEBUG: bool = {
@@ -82,6 +84,7 @@ impl ChatApp {
             window: None,
             chat_list,
             widgets,
+            expand_list: true,
         }
     }
 }
@@ -90,11 +93,10 @@ impl eframe::App for ChatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                for (view, show) in self.widgets.iter_mut() {
-                    ui.selectable_label(*show, view.name()).clicked().then(|| {
-                        *show = !*show;
-                    });
-                }
+                if ui.selectable_label(self.expand_list, "List").clicked() {
+                    self.expand_list = !self.expand_list;
+                };
+
                 ui.separator();
                 if let Some(window) = &mut self.window {
                     window.actions(ui);
@@ -103,6 +105,11 @@ impl eframe::App for ChatApp {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     egui::global_dark_light_mode_switch(ui);
                     ui.separator();
+                    for (view, show) in self.widgets.iter_mut() {
+                        ui.selectable_label(*show, view.name()).clicked().then(|| {
+                            *show = !*show;
+                        });
+                    }
                 });
             });
         });
@@ -110,14 +117,16 @@ impl eframe::App for ChatApp {
         self.widgets
             .iter_mut()
             .for_each(|(view, show)| view.show(ctx, show));
-        egui::SidePanel::left("left_chat_panel").show(ctx, |ui| match self.chat_list.ui(ui) {
-            chat_list::ResponseEvent::Select(chat) => {
-                self.window = Some(chat);
+        egui::SidePanel::left("left_chat_panel").show_animated(ctx, self.expand_list, |ui| {
+            match self.chat_list.ui(ui) {
+                chat_list::ResponseEvent::Select(chat) => {
+                    self.window = Some(chat);
+                }
+                chat_list::ResponseEvent::Remove => {
+                    self.window = None;
+                }
+                chat_list::ResponseEvent::None => {}
             }
-            chat_list::ResponseEvent::Remove => {
-                self.window = None;
-            }
-            chat_list::ResponseEvent::None => {}
         });
         if let Some(window) = &mut self.window {
             window.show(ctx);
