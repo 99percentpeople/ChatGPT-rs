@@ -39,8 +39,10 @@ pub fn highlight_easymark(
             let language = text[3..]
                 .find('\n')
                 .map_or_else(|| "text", |i| &text[3..3 + i]);
-
-            let end = text.find("\n```").map_or_else(|| text.len(), |i| i + 4);
+            let start = text.find('\n').map_or_else(|| 3, |i| i + 1);
+            job.append(&text[..start], 0.0, format_from_style(egui_style, &style));
+            text = &text[start..];
+            let end = text.find("\n```").map_or_else(|| text.len(), |i| i);
 
             let mut code_job = syntax_highlighting::highlight(ctx, &theme, &text[..end], language);
             let offset = job.text.len();
@@ -52,7 +54,16 @@ pub fn highlight_easymark(
             job.sections.append(&mut code_job.sections);
             job.text.push_str(&text[..end]);
 
-            text = &text[end..];
+            if end != text.len() {
+                job.append(
+                    &text[end..end + 4],
+                    0.0,
+                    format_from_style(egui_style, &style),
+                );
+                text = &text[end + 4..];
+            } else {
+                text = &text[end..];
+            }
             style = Default::default();
             continue;
         }
@@ -72,14 +83,30 @@ pub fn highlight_easymark(
 
         if text.starts_with('\\') && text.len() >= 2 {
             skip = 2;
+        } else if start_of_line && text.starts_with("# ") {
+            style.heading = 1;
+            skip = 2;
+        } else if start_of_line && text.starts_with("## ") {
+            style.heading = 2;
+            skip = 2;
+        } else if start_of_line && text.starts_with("### ") {
+            style.heading = 3;
+            skip = 2;
+        } else if start_of_line && text.starts_with("#### ") {
+            style.heading = 4;
+            skip = 2;
+        } else if start_of_line && text.starts_with("##### ") {
+            style.heading = 5;
+            skip = 2;
+        } else if start_of_line && text.starts_with("###### ") {
+            style.heading = 6;
+            skip = 2;
         }
         // else if start_of_line && text.starts_with(' ') {
         //     // we don't preview indentation, because it is confusing
         //     skip = 1;
-        // } else if start_of_line && text.starts_with("# ") {
-        //     style.heading = true;
-        //     skip = 2;
-        // } else if start_of_line && text.starts_with("> ") {
+        // }
+        // else if start_of_line && text.starts_with("> ") {
         //     style.quoted = true;
         //     skip = 2;
         //     // we don't preview indentation, because it is confusing
@@ -168,7 +195,7 @@ fn format_from_style(
 ) -> egui::text::TextFormat {
     use egui::{Align, Color32, Stroke, TextStyle};
 
-    let color = if emark_style.strong || emark_style.heading {
+    let color = if emark_style.strong || emark_style.heading != 0 {
         egui_style.visuals.strong_text_color()
     } else if emark_style.quoted {
         egui_style.visuals.weak_text_color()
@@ -176,8 +203,18 @@ fn format_from_style(
         egui_style.visuals.text_color()
     };
 
-    let text_style = if emark_style.heading {
-        TextStyle::Heading
+    let text_style = if emark_style.heading == 1 {
+        TextStyle::Name("Heading1".into())
+    } else if emark_style.heading == 2 {
+        TextStyle::Name("Heading2".into())
+    } else if emark_style.heading == 3 {
+        TextStyle::Name("Heading3".into())
+    } else if emark_style.heading == 4 {
+        TextStyle::Name("Heading4".into())
+    } else if emark_style.heading == 5 {
+        TextStyle::Name("Heading5".into())
+    } else if emark_style.heading == 6 {
+        TextStyle::Name("Heading6".into())
     } else if emark_style.code {
         TextStyle::Monospace
     } else if emark_style.small | emark_style.raised {

@@ -57,6 +57,7 @@ impl ChatList {
         let name = name.unwrap_or_else(|| format!("chat_{}", self.chat_list.len() + 1));
         self.chat_list.insert(name.to_owned(), chat);
         Ok(Box::new(ChatWindow::new(
+            name.clone(),
             self.chat_list.get(&name).unwrap().clone(),
         )))
     }
@@ -69,6 +70,7 @@ impl ChatList {
         let name = name.unwrap_or_else(|| format!("complete_{}", self.complete_list.len() + 1));
         self.complete_list.insert(name.to_owned(), complete);
         Ok(Box::new(CompleteWindow::new(
+            name.clone(),
             self.complete_list.get_mut(&name).unwrap().clone(),
         )))
     }
@@ -207,8 +209,10 @@ impl super::View for ChatList {
                                 remove_chat = Some(name.clone());
                             };
                             if ui.button("select").clicked() {
-                                event =
-                                    ResponseEvent::Select(Box::new(ChatWindow::new(chat.clone())));
+                                event = ResponseEvent::Select(Box::new(ChatWindow::new(
+                                    name.clone(),
+                                    chat.clone(),
+                                )));
                             }
 
                             ui.end_row();
@@ -232,6 +236,7 @@ impl super::View for ChatList {
                             };
                             if ui.button("select").clicked() {
                                 event = ResponseEvent::Select(Box::new(CompleteWindow::new(
+                                    name.clone(),
                                     complete.clone(),
                                 )));
                             }

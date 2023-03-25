@@ -16,6 +16,7 @@ use super::{
 };
 
 pub struct ChatWindow {
+    window_name: String,
     chatgpt: ChatAPI,
     text: String,
     complete_handle: Option<JoinHandle<()>>,
@@ -26,15 +27,15 @@ pub struct ChatWindow {
     parameter_control: ParameterControler,
     toasts: Toasts,
     highlighter: Rc<RefCell<easy_mark::MemoizedEasymarkHighlighter>>,
+    enable_markdown: bool,
 }
 
 impl ChatWindow {
-    const LINEBREAK_SHORTCUT: egui::KeyboardShortcut =
-        egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::Enter);
-    pub fn new(chatgpt: ChatAPI) -> Self {
+    pub fn new(window_name: String, chatgpt: ChatAPI) -> Self {
         let model_table = ModelTable::new(ModelType::Chat);
         let parameter_control = ParameterControler::new(chatgpt.params());
         Self {
+            window_name,
             chatgpt,
             text: String::new(),
             complete_handle: None,
@@ -47,13 +48,14 @@ impl ChatWindow {
             highlighter: Rc::new(RefCell::new(
                 easy_mark::MemoizedEasymarkHighlighter::default(),
             )),
+            enable_markdown: true,
         }
     }
 }
 
 impl super::MainWindow for ChatWindow {
-    fn name(&self) -> &'static str {
-        "Chat"
+    fn name(&self) -> &str {
+        &self.window_name
     }
     fn show(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -76,17 +78,24 @@ impl super::MainWindow for ChatWindow {
 
 impl ChatWindow {
     fn selectable_text(&self, ui: &mut egui::Ui, mut text: &str) {
-        let highlighter = self.highlighter.clone();
-        let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
-            let mut layout_job = highlighter.borrow_mut().highlight(ui, easymark);
-            layout_job.wrap.max_width = wrap_width;
-            ui.fonts(|f| f.layout_job(layout_job))
-        };
-        egui::TextEdit::multiline(&mut text)
-            .desired_width(f32::INFINITY)
-            .desired_rows(1)
-            .layouter(&mut layouter)
-            .show(ui);
+        if self.enable_markdown {
+            let highlighter = self.highlighter.clone();
+            let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
+                let mut layout_job = highlighter.borrow_mut().highlight(ui, easymark);
+                layout_job.wrap.max_width = wrap_width;
+                ui.fonts(|f| f.layout_job(layout_job))
+            };
+            egui::TextEdit::multiline(&mut text)
+                .desired_width(f32::INFINITY)
+                .desired_rows(1)
+                .layouter(&mut layouter)
+                .show(ui);
+        } else {
+            egui::TextEdit::multiline(&mut text)
+                .desired_width(f32::INFINITY)
+                .desired_rows(1)
+                .show(ui);
+        }
     }
 }
 
@@ -127,7 +136,16 @@ impl super::View for ChatWindow {
                 self.parameter_control.ui(ui);
             },
         );
-
+        egui::TopBottomPanel::top("chat_top_panel").show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(&self.window_name);
+                ui.separator();
+                ui.heading(chat.model);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut self.enable_markdown, "Markdown");
+                });
+            });
+        });
         egui::TopBottomPanel::bottom("bottom_panel").show_inside(ui, |ui| {
             ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
                 ui.add_enabled_ui(is_ready, |ui| {
@@ -145,17 +163,8 @@ impl super::View for ChatWindow {
                             return;
                         }
                     }
-                    let highlighter = self.highlighter.clone();
-                    let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
-                        let mut layout_job = highlighter.borrow_mut().highlight(ui, easymark);
-                        layout_job.wrap.max_width = wrap_width;
-                        ui.fonts(|f| f.layout_job(layout_job))
-                    };
-                    ui.add(
-                        egui::TextEdit::multiline(&mut self.text)
-                            .desired_width(f32::INFINITY)
-                            .layouter(&mut layouter),
-                    );
+
+                    ui.add(egui::TextEdit::multiline(&mut self.text).desired_width(f32::INFINITY));
                 });
                 ui.add_space(5.);
                 ui.horizontal(|ui| {
@@ -219,8 +228,6 @@ impl super::View for ChatWindow {
             });
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading(chat.model);
-            ui.separator();
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .show(ui, |ui| {

@@ -7,7 +7,10 @@ mod model_table;
 mod parameter_control;
 
 use self::{chat_list::ChatList, logger::LoggerUi};
-use eframe::egui;
+use eframe::{
+    egui::{self, TextStyle},
+    epaint::{FontFamily, FontId},
+};
 use font_kit::{
     family_name::FamilyName,
     properties::{Properties, Weight},
@@ -43,6 +46,33 @@ impl ChatApp {
         setup_fonts(&cc.egui_ctx);
         let mut widgets = Vec::new();
         let mut chat_list = ChatList::default();
+
+        let mut style = (*cc.egui_ctx.style()).clone();
+        style.text_styles.insert(
+            TextStyle::Name("Heading1".into()),
+            FontId::new(36.0, FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            TextStyle::Name("Heading2".into()),
+            FontId::new(24.0, FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            TextStyle::Name("Heading3".into()),
+            FontId::new(21.0, FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            TextStyle::Name("Heading4".into()),
+            FontId::new(18.0, FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            TextStyle::Name("Heading5".into()),
+            FontId::new(16.0, FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            TextStyle::Name("Heading6".into()),
+            FontId::new(14.0, FontFamily::Proportional),
+        );
+        cc.egui_ctx.set_style(style);
         chat_list.load().ok();
         widgets.push((
             Box::new(LoggerUi::default()) as Box<dyn Window>,
@@ -140,7 +170,7 @@ fn setup_fonts(ctx: &egui::Context) {
         .insert("system".to_owned(), egui::FontData::from_static(data));
     fonts
         .families
-        .entry(egui::FontFamily::Proportional)
+        .entry(FontFamily::Proportional)
         .or_default()
         .insert(0, "system".to_owned());
 
@@ -175,20 +205,20 @@ fn setup_fonts(ctx: &egui::Context) {
 
     fonts
         .families
-        .entry(egui::FontFamily::Monospace)
+        .entry(FontFamily::Monospace)
         .or_default()
         .insert(0, "mono".to_owned());
     ctx.set_fonts(fonts);
 }
 
 pub trait MainWindow {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
     fn show(&mut self, ctx: &egui::Context);
     fn actions(&mut self, _ui: &mut egui::Ui) {}
 }
 
 pub trait Window {
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
     fn show(&mut self, ctx: &egui::Context, open: &mut bool);
 }
 

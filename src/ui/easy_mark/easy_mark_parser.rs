@@ -41,7 +41,7 @@ pub enum Item<'a> {
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Style {
     /// # heading (large text)
-    pub heading: bool,
+    pub heading: u32,
 
     /// > quoted (slightly dimmer color or other font style)
     pub quoted: bool,
@@ -231,7 +231,7 @@ impl<'a> Iterator for Parser<'a> {
                 if let Some(after) = self.s.strip_prefix("# ") {
                     self.s = after;
                     self.start_of_line = false;
-                    self.style.heading = true;
+                    self.style.heading = 1;
                     continue;
                 }
 

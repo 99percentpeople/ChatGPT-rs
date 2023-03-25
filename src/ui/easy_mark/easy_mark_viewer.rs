@@ -102,10 +102,10 @@ fn rich_text_from_style(text: &str, style: &easy_mark::Style) -> RichText {
     let small = small || raised; // Raised text is also smaller
 
     let mut rich_text = RichText::new(text);
-    if heading && !small {
+    if heading != 0 && !small {
         rich_text = rich_text.heading().strong();
     }
-    if small && !heading {
+    if small && heading == 0 {
         rich_text = rich_text.small();
     }
     if code {

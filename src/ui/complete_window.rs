@@ -2,27 +2,33 @@ use eframe::egui;
 
 use crate::api::complete::CompleteAPI;
 
-use super::{MainWindow, View};
+use super::{easy_mark, MainWindow, View};
 use poll_promise::Promise;
 pub struct CompleteWindow {
+    window_name: String,
     complete: CompleteAPI,
     text: String,
     promise: Option<Promise<Result<String, anyhow::Error>>>,
+    highlighter: easy_mark::MemoizedEasymarkHighlighter,
+    enable_markdown: bool,
 }
 
 impl CompleteWindow {
-    pub fn new(complete: CompleteAPI) -> Self {
+    pub fn new(window_name: String, complete: CompleteAPI) -> Self {
         Self {
+            window_name,
             text: tokio::task::block_in_place(|| complete.complete.blocking_read().prompt.clone()),
             complete,
             promise: None,
+            highlighter: Default::default(),
+            enable_markdown: true,
         }
     }
 }
 
 impl MainWindow for CompleteWindow {
-    fn name(&self) -> &'static str {
-        "Complete"
+    fn name(&self) -> &str {
+        &self.window_name
     }
 
     fn show(&mut self, ctx: &eframe::egui::Context) {
@@ -52,6 +58,14 @@ impl View for CompleteWindow {
                 self.promise = None;
             }
         }
+        egui::TopBottomPanel::top("complete_top").show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(&self.window_name);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut self.enable_markdown, "Markdown");
+                });
+            });
+        });
         egui::TopBottomPanel::bottom("complete_bottom").show_inside(ui, |ui| {
             ui.add_space(5.);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -94,16 +108,34 @@ impl View for CompleteWindow {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    ui.add_enabled(
-                        is_ready,
-                        egui::TextEdit::multiline(&mut self.text).desired_width(f32::INFINITY),
-                    )
-                    .changed()
-                    .then(|| {
-                        let mut complete = self.complete.clone();
-                        let text = self.text.clone();
-                        tokio::spawn(async move {
-                            complete.set_prompt(text).await;
+                    ui.add_enabled_ui(is_ready, |ui| {
+                        if self.enable_markdown {
+                            let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
+                                let mut layout_job = self.highlighter.highlight(ui, easymark);
+                                layout_job.wrap.max_width = wrap_width;
+                                ui.fonts(|f| f.layout_job(layout_job))
+                            };
+
+                            ui.add_sized(
+                                ui.available_size(),
+                                egui::TextEdit::multiline(&mut self.text)
+                                    .desired_width(f32::INFINITY)
+                                    .layouter(&mut layouter),
+                            )
+                        } else {
+                            ui.add_sized(
+                                ui.available_size(),
+                                egui::TextEdit::multiline(&mut self.text)
+                                    .desired_width(f32::INFINITY),
+                            )
+                        }
+                        .changed()
+                        .then(|| {
+                            let mut complete = self.complete.clone();
+                            let text = self.text.clone();
+                            tokio::spawn(async move {
+                                complete.set_prompt(text).await;
+                            });
                         });
                     });
                 });
