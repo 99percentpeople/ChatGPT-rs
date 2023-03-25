@@ -7,12 +7,13 @@ ChatGPT-rs is a lightweight ChatGPT client with a graphical user interface, writ
 ChatGPT-rs provides the following features:
 
 - :computer: **User-friendly GUI:** ChatGPT-rs has an intuitive graphical user interface that makes it easy to use.
-- :floppy_disk: **Lightweight:** ChatGPT-rs is a small application with a download size of approximately 6MB on Windows.
+- :floppy_disk: **Lightweight:** ChatGPT-rs is a small application with a download size of approximately 6MB.
 - :thumbsup: **Easy to use:** ChatGPT-rs can be used as soon as it is downloaded without the need for any additional deployment steps.
 - :wrench: **Model parameter tuning:** ChatGPT-rs allows you to fine-tune the GPT model by adjusting the model parameters, allowing for more customized responses.
 - :page_facing_up: **Conversation history:** ChatGPT-rs allows you to save and access conversation history, so you can review past conversations.
+- :memo: **Markdown support:** ChatGPT-rs supports markdown syntax, allowing you to format your messages with ease.
+- :art: **Syntax highlighting:** ChatGPT-rs includes syntax highlighting for programming languages, making it easy to share code snippets in your conversation.
 - :iphone: **Compatibility:** ChatGPT-rs is designed to work on multiple platforms, including Windows, Mac, and Linux.
-
 
 ![1](./image/1.png)
 
