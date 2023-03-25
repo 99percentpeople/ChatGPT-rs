@@ -1,10 +1,10 @@
 mod chat_list;
 mod chat_window;
 mod complete_window;
+mod easy_mark;
 pub mod logger;
 mod model_table;
 mod parameter_control;
-
 use self::{chat_list::ChatList, logger::LoggerUi};
 use eframe::egui;
 use font_kit::{
@@ -136,7 +136,11 @@ fn setup_fonts(ctx: &egui::Context) {
         .entry(egui::FontFamily::Proportional)
         .or_default()
         .insert(0, "system".to_owned());
-
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .insert(0, "system".to_owned());
     ctx.set_fonts(fonts);
 }
 

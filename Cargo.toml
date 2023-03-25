@@ -34,3 +34,8 @@ regex = "1.7.1"
 strum = { version = "0.24.1", features = ["derive"] }
 poll-promise = { version = "0.2.0", features = ["tokio"] }
 font-kit = "0.11.0"
+enum-map = "2.5.0"
+syntect = { version = "*", optional = true }
+[features]
+default = ["syntect"]
+syntect = ["dep:syntect"]

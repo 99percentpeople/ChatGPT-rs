@@ -2,12 +2,18 @@ use crate::api::{
     chat::{ChatAPI, Role},
     ParameterControl,
 };
-use eframe::egui;
+use eframe::egui::{self, Modifiers};
 use egui_notify::Toasts;
-use std::sync::{atomic, Arc};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{atomic, Arc},
+};
 use tokio::task::JoinHandle;
 
-use super::{model_table::ModelTable, parameter_control::ParameterControler, ModelType, View};
+use super::{
+    easy_mark, model_table::ModelTable, parameter_control::ParameterControler, ModelType, View,
+};
 
 pub struct ChatWindow {
     chatgpt: ChatAPI,
@@ -19,6 +25,7 @@ pub struct ChatWindow {
     model_table: ModelTable,
     parameter_control: ParameterControler,
     toasts: Toasts,
+    highlighter: Rc<RefCell<easy_mark::MemoizedEasymarkHighlighter>>,
 }
 
 impl ChatWindow {
@@ -37,6 +44,9 @@ impl ChatWindow {
             show_parameter_control: false,
             parameter_control,
             toasts: Toasts::default(),
+            highlighter: Rc::new(RefCell::new(
+                easy_mark::MemoizedEasymarkHighlighter::default(),
+            )),
         }
     }
 }
@@ -61,6 +71,22 @@ impl super::MainWindow for ChatWindow {
             .then(|| {
                 self.show_parameter_control = !self.show_parameter_control;
             });
+    }
+}
+
+impl ChatWindow {
+    fn selectable_text(&self, ui: &mut egui::Ui, mut text: &str) {
+        let highlighter = self.highlighter.clone();
+        let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
+            let mut layout_job = highlighter.borrow_mut().highlight(ui, easymark);
+            layout_job.wrap.max_width = wrap_width;
+            ui.fonts(|f| f.layout_job(layout_job))
+        };
+        egui::TextEdit::multiline(&mut text)
+            .desired_width(f32::INFINITY)
+            .desired_rows(1)
+            .layouter(&mut layouter)
+            .show(ui);
     }
 }
 
@@ -105,12 +131,7 @@ impl super::View for ChatWindow {
         egui::TopBottomPanel::bottom("bottom_panel").show_inside(ui, |ui| {
             ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
                 ui.add_enabled_ui(is_ready, |ui| {
-                    ui.add(egui::TextEdit::multiline(&mut self.text).desired_width(f32::INFINITY));
-                    if ui.input_mut(|i| i.consume_shortcut(&Self::LINEBREAK_SHORTCUT)) {
-                        // self.text.push_str("\n");
-                        return;
-                    }
-                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    if ui.input_mut(|i| i.consume_key(Modifiers::NONE, egui::Key::Enter)) {
                         let input_text = self.text.trim().to_string();
                         if !input_text.is_empty() {
                             let mut chat = self.chatgpt.clone();
@@ -121,8 +142,20 @@ impl super::View for ChatWindow {
                                 is_ready.store(true, atomic::Ordering::Relaxed);
                             }));
                             self.text.clear();
+                            return;
                         }
                     }
+                    let highlighter = self.highlighter.clone();
+                    let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
+                        let mut layout_job = highlighter.borrow_mut().highlight(ui, easymark);
+                        layout_job.wrap.max_width = wrap_width;
+                        ui.fonts(|f| f.layout_job(layout_job))
+                    };
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.text)
+                            .desired_width(f32::INFINITY)
+                            .layouter(&mut layouter),
+                    );
                 });
                 ui.add_space(5.);
                 ui.horizontal(|ui| {
@@ -197,7 +230,7 @@ impl super::View for ChatWindow {
                                 ui,
                                 |ui| {
                                     let content = msg.content.to_string();
-                                    selectable_text(ui, &content);
+                                    self.selectable_text(ui, &content);
                                 },
                                 &msg.role,
                             );
@@ -207,7 +240,7 @@ impl super::View for ChatWindow {
                                 message(
                                     ui,
                                     |ui| {
-                                        selectable_text(ui, &generate);
+                                        self.selectable_text(ui, &generate);
                                     },
                                     &Role::Assistant,
                                 );
@@ -217,11 +250,7 @@ impl super::View for ChatWindow {
                             message(
                                 ui,
                                 |ui| {
-                                    selectable_text(ui, &generate_text.unwrap());
-                                    // ui.label(
-                                    //     egui::RichText::new(generate_text.unwrap())
-                                    //         .color(epaint::Color32::RED),
-                                    // );
+                                    self.selectable_text(ui, &generate_text.unwrap());
                                     ui.button("Retry")
                                 },
                                 &Role::Assistant,
@@ -260,11 +289,4 @@ pub fn message<R>(
         .inner
     })
     .inner
-}
-
-fn selectable_text(ui: &mut egui::Ui, mut text: &str) {
-    egui::TextEdit::multiline(&mut text)
-        .desired_width(f32::INFINITY)
-        .desired_rows(1)
-        .show(ui);
 }
