@@ -21,19 +21,20 @@ impl super::View for ParameterControler {
     type Response<'a> = ResponseEvent;
     fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
         let event = ResponseEvent::None;
+        let params: Vec<_> = self.params.iter().map(|a| (a, a.get())).collect();
         egui::Grid::new("grid")
             .num_columns(2)
             .striped(true)
             .show(ui, |ui| {
-                for param in self.params.iter() {
-                    match param.get() {
+                for (param, value) in &params {
+                    match value {
                         ParameterValue::OptionalInteger(n) => {
                             let mut res = match n {
                                 Some(n) => {
                                     if ui.checkbox(&mut true, param.name()).changed() {
                                         param.set(ParameterValue::OptionalInteger(None))
                                     }
-                                    n
+                                    n.clone()
                                 }
                                 None => {
                                     let ParameterValue::Integer(d) = param.store() else {
@@ -46,32 +47,45 @@ impl super::View for ParameterControler {
                                 }
                             };
                             ui.add_enabled_ui(n.is_some(), |ui| {
-                                if let ParameterRange::Integer(st, ed) = param.range() {
+                                if let Some(ParameterRange::Integer(st, ed)) = param.range() {
                                     if ui.add(egui::Slider::new(&mut res, st..=ed)).changed() {
                                         param.set(ParameterValue::OptionalInteger(Some(res)));
                                     };
+                                } else {
+                                    if ui.add(egui::DragValue::new(&mut res).speed(1)).changed() {
+                                        param.set(ParameterValue::OptionalInteger(n.clone()));
+                                    }
                                 }
                             });
                             ui.end_row();
                         }
                         ParameterValue::Number(mut n) => {
                             ui.label(param.name());
-                            if let ParameterRange::Number(st, ed) = param.range() {
+                            if let Some(ParameterRange::Number(st, ed)) = param.range() {
                                 if ui.add(egui::Slider::new(&mut n, st..=ed)).changed() {
                                     param.set(ParameterValue::Number(n));
-                                };
+                                }
+                            } else {
+                                if ui.add(egui::DragValue::new(&mut n).speed(0.1)).changed() {
+                                    param.set(ParameterValue::Number(n));
+                                }
                             }
                             ui.end_row();
                         }
                         ParameterValue::Integer(mut n) => {
                             ui.label(param.name());
-                            if let ParameterRange::Integer(st, ed) = param.range() {
+                            if let Some(ParameterRange::Integer(st, ed)) = param.range() {
                                 if ui.add(egui::Slider::new(&mut n, st..=ed)).changed() {
                                     param.set(ParameterValue::Integer(n));
                                 };
+                            } else {
+                                if ui.add(egui::DragValue::new(&mut n).speed(1)).changed() {
+                                    param.set(ParameterValue::Integer(n));
+                                }
                             }
                             ui.end_row();
                         }
+
                         _ => {}
                     }
                 }
@@ -99,13 +113,11 @@ impl super::View for ParameterControler {
                 //     });
                 // ui.end_row();
                 // ui.add(doc_link_label("Top P", "top_p","https://platform.openai.com/docs/api-reference/chat/create#chat/create-top_p"));
-
                 // ui.add(egui::Slider::new(&mut self.top_p, 0.0..=1.0))
                 //     .changed()
                 //     .then(|| {
                 //         event = ResponseEvent::TopP(self.top_p);
                 //     });
-
                 // ui.end_row();
                 // ui.add(doc_link_label("Presence Penalty", "presence_penalty","https://platform.openai.com/docs/api-reference/chat/create#chat/create-presence_penalty"));
                 // ui.add(egui::Slider::new(&mut self.presence_penalty, -2.0..=2.0))
@@ -113,7 +125,6 @@ impl super::View for ParameterControler {
                 //     .then(|| {
                 //         event = ResponseEvent::PresencePenalty(self.presence_penalty);
                 //     });
-
                 // ui.end_row();
                 // ui.add(doc_link_label("Frequency Penalty", "frequency_penalty","https://platform.openai.com/docs/api-reference/chat/create#chat/create-frequency_penalty"));
                 // ui.add(egui::Slider::new(&mut self.frequency_penalty, -2.0..=2.0))
@@ -123,6 +134,31 @@ impl super::View for ParameterControler {
                 //     });
                 // ui.end_row();
             });
+        for (param, value) in params {
+            match value {
+                ParameterValue::OptionalString(s) => {
+                    ui.separator();
+                    ui.label(param.name());
+                    let mut res = s.unwrap_or_default();
+                    ui.text_edit_multiline(&mut res).changed().then(|| {
+                        if res.is_empty() {
+                            param.set(ParameterValue::OptionalString(None));
+                        } else {
+                            param.set(ParameterValue::OptionalString(Some(res)));
+                        }
+                    });
+                }
+                ParameterValue::String(s) => {
+                    ui.separator();
+                    ui.label(param.name());
+                    let mut res = s;
+                    ui.text_edit_singleline(&mut res).changed().then(|| {
+                        param.set(ParameterValue::String(res));
+                    });
+                }
+                _ => {}
+            }
+        }
         event
     }
 }

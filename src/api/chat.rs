@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 use strum::Display;
 use tracing::instrument;
 
+use crate::client::fetch_sse;
 use crate::client::MultiClient;
-use crate::fetch_sse::fetch_sse;
 use futures::StreamExt;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_stream::Stream;
@@ -27,7 +28,7 @@ pub struct Chat {
     /// `array` `Required`
     ///
     /// The messages to generate chat completions for, in the chat format.
-    pub messages: Vec<ChatMessage>,
+    pub messages: VecDeque<ChatMessage>,
     /// `number` `Optional` `Defaults to 1`
     ///
     /// What sampling temperature to use, between 0 and 2.
@@ -125,7 +126,7 @@ struct ChatUsage {
 pub struct ChatAPI {
     pub data: Arc<RwLock<Chat>>,
     client: Arc<MultiClient>,
-    api_key: String,
+    api_key: Arc<RwLock<String>>,
 
     pub pending_generate: Arc<RwLock<Option<Result<ResponseChatMessage, anyhow::Error>>>>,
 }
@@ -141,7 +142,7 @@ impl ChatAPIBuilder {
         Self {
             chat: Chat {
                 model: ChatAPI::DEFAULT_MODEL.to_string(),
-                messages: Vec::new(),
+                messages: VecDeque::new(),
                 temperature: Some(1.),
                 top_p: Some(1.),
                 n: Some(1),
@@ -162,7 +163,7 @@ impl ChatAPIBuilder {
     pub fn build(self) -> ChatAPI {
         ChatAPI {
             data: Arc::new(RwLock::new(self.chat)),
-            api_key: self.api_key,
+            api_key: Arc::new(RwLock::new(self.api_key)),
             client: Arc::new(MultiClient::new()),
             pending_generate: Arc::new(RwLock::new(None)),
         }
@@ -179,16 +180,45 @@ impl ChatAPI {
     pub async fn clear_message(&mut self) {
         self.data.write().await.messages.clear();
     }
-    pub async fn system(&mut self, system_message: String) {
-        self.add_message(ChatMessage {
-            role: Role::System,
-            content: system_message,
-        })
-        .await;
+    pub async fn set_system_message(&self, system_message: Option<String>) {
+        let mut data = self.data.write().await;
+        if let Some(system_message) = system_message {
+            if let Some(msg) = data.messages.front_mut() {
+                if msg.role == Role::System {
+                    msg.content = system_message;
+                    return;
+                }
+            }
+            data.messages.push_front(ChatMessage {
+                role: Role::System,
+                content: system_message,
+            })
+        } else {
+            if let Some(msg) = data.messages.front() {
+                if msg.role == Role::System {
+                    data.messages.pop_front();
+                }
+            }
+        }
+    }
+    pub fn get_system_message(&self) -> Option<String> {
+        let data = tokio::task::block_in_place(|| self.data.blocking_read());
+        if let Some(msg) = data.messages.front() {
+            if msg.role == Role::System {
+                return Some(msg.content.clone());
+            }
+        }
+        None
+    }
+    pub fn get_api_key(&self) -> String {
+        tokio::task::block_in_place(|| self.api_key.blocking_read()).clone()
+    }
+    pub async fn set_api_key(&self, api_key: String) {
+        *self.api_key.write().await = api_key;
     }
 
     async fn add_message(&mut self, message: ChatMessage) {
-        self.data.write().await.messages.push(message);
+        self.data.write().await.messages.push_back(message);
     }
     pub async fn question(&mut self, question: String) -> Result<(), anyhow::Error> {
         self.add_message(ChatMessage {
@@ -206,7 +236,7 @@ impl ChatAPI {
         Ok(())
     }
     pub async fn remove_last(&mut self) {
-        match self.data.write().await.messages.pop() {
+        match self.data.write().await.messages.pop_back() {
             Some(v) => tracing::info!("Removed last message: {:?}", v),
             None => tracing::info!("No message to remove"),
         };
@@ -304,7 +334,7 @@ impl ChatAPI {
 
         request_body.headers_mut().insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap(),
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key.read().await)).unwrap(),
         );
 
         let response = self.client.request(request_body).await?;
@@ -317,8 +347,8 @@ impl ParameterControl for ChatAPI {
         let mut v = Vec::new();
         v.push(Box::new(Param {
             name: "max_tokens",
-            range: (1, 2048).into(),
-            store: Cell::new(tokio::task::block_in_place(|| {
+            range: Some((1, 2048).into()),
+            store: RefCell::new(tokio::task::block_in_place(|| {
                 self.data.blocking_read().max_tokens
             })),
             default: 2048.into(),
@@ -338,9 +368,9 @@ impl ParameterControl for ChatAPI {
         }) as Box<dyn Parameter>);
         v.push(Box::new(Param {
             name: "temperature",
-            range: (0., 2.).into(),
+            range: Some((0., 2.).into()),
             default: (1.).into(),
-            store: Cell::new(1.),
+            store: RefCell::new(1.),
             getter: {
                 let data = self.data.clone();
                 Box::new(move || {
@@ -359,9 +389,9 @@ impl ParameterControl for ChatAPI {
         }));
         v.push(Box::new(Param {
             name: "top_p",
-            range: (0., 2.).into(),
+            range: Some((0., 2.).into()),
             default: (1.).into(),
-            store: Cell::new(1.),
+            store: RefCell::new(1.),
             getter: {
                 let data = self.data.clone();
                 Box::new(move || {
@@ -380,9 +410,9 @@ impl ParameterControl for ChatAPI {
         }));
         v.push(Box::new(Param {
             name: "presence_penalty",
-            range: (-2., 2.).into(),
+            range: Some((-2., 2.).into()),
             default: (0.).into(),
-            store: Cell::new(0.),
+            store: RefCell::new(0.),
             getter: {
                 let data = self.data.clone();
                 Box::new(move || {
@@ -403,9 +433,9 @@ impl ParameterControl for ChatAPI {
         }));
         v.push(Box::new(Param {
             name: "frequency_penalty",
-            range: (-2., 2.).into(),
+            range: Some((-2., 2.).into()),
             default: (0.).into(),
-            store: Cell::new(0.),
+            store: RefCell::new(0.),
             getter: {
                 let data = self.data.clone();
                 Box::new(move || {
@@ -420,6 +450,44 @@ impl ParameterControl for ChatAPI {
                     let data = data.clone();
                     tokio::spawn(async move {
                         data.write().await.frequency_penalty = Some(frequency_penalty);
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param {
+            name: "system_message",
+            range: None,
+            default: self.get_system_message().into(),
+            store: RefCell::new(None),
+            getter: {
+                let _self = self.clone();
+                Box::new(move || _self.get_system_message())
+            },
+            setter: {
+                let _self = self.clone();
+                Box::new(move |system_message| {
+                    let mut _self = _self.clone();
+                    tokio::spawn(async move {
+                        _self.set_system_message(system_message).await;
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param::<String> {
+            name: "api_key",
+            range: None,
+            default: self.get_api_key().into(),
+            store: RefCell::new(self.get_api_key().into()),
+            getter: {
+                let _self = self.clone();
+                Box::new(move || _self.get_api_key())
+            },
+            setter: {
+                let mut _self = self.clone();
+                Box::new(move |api_key| {
+                    let _self = _self.clone();
+                    tokio::spawn(async move {
+                        _self.set_api_key(api_key).await;
                     });
                 })
             },

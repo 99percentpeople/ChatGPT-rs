@@ -20,7 +20,7 @@ impl ModelTable {
     const CHAT_MODELS: [&str; 2] = ["gpt-3.5-turbo", "gpt-3.5-turbo-0301"];
     pub fn new(model_type: ModelType) -> Self {
         Self {
-            models: ModelsAPI::new(),
+            models: ModelsAPI::new(std::env::var("OPENAI_API_KEY").unwrap_or_default()),
             model_type,
         }
     }

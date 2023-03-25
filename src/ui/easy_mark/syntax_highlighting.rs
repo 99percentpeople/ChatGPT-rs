@@ -316,7 +316,7 @@ impl Default for Highlighter {
 #[cfg(feature = "syntect")]
 impl Highlighter {
     #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
-    pub(super) fn highlight(&self, theme: &CodeTheme, code: &str, lang: &str) -> LayoutJob {
+    fn highlight(&self, theme: &CodeTheme, code: &str, lang: &str) -> LayoutJob {
         self.highlight_impl(theme, code, lang).unwrap_or_else(|| {
             // Fallback:
             LayoutJob::simple(
@@ -340,6 +340,7 @@ impl Highlighter {
         let syntax = self
             .ps
             .find_syntax_by_token(language)
+            .or_else(|| self.ps.find_syntax_by_name(language))
             .or_else(|| self.ps.find_syntax_by_extension(language))?;
 
         let theme = theme.syntect_theme.syntect_key_name();

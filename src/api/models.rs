@@ -27,12 +27,12 @@ pub struct ModelsAPI {
     client: Arc<MultiClient>,
 }
 impl ModelsAPI {
-    pub fn new() -> Self {
+    pub fn new(api_key: String) -> Self {
         Self {
             models: Arc::new(RwLock::new(None)),
             client: Arc::new(MultiClient::new()),
             is_ready: Arc::new(atomic::AtomicBool::new(true)),
-            api_key: std::env::var("OPENAI_API_KEY").unwrap(),
+            api_key,
         }
     }
     pub async fn get_models(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

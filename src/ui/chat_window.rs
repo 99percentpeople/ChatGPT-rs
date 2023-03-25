@@ -112,7 +112,7 @@ impl super::View for ChatWindow {
         let is_ready = self.is_ready.load(atomic::Ordering::Relaxed);
         let ready_to_retry = chat
             .messages
-            .last()
+            .back()
             .is_some_and(|msg| msg.role == Role::User)
             && is_ready;
         let can_remove_last = !chat.messages.is_empty();

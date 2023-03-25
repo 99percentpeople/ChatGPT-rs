@@ -101,7 +101,6 @@ impl eframe::App for ChatApp {
                 if let Some(window) = &mut self.window {
                     window.actions(ui);
                 }
-
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     egui::global_dark_light_mode_switch(ui);
                     ui.separator();

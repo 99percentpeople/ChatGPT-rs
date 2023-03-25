@@ -2,8 +2,8 @@ use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Request, Uri};
 use serde::{Deserialize, Serialize};
 
+use crate::client::fetch_sse;
 use crate::client::MultiClient;
-use crate::fetch_sse::fetch_sse;
 use futures::StreamExt;
 
 use std::sync::Arc;

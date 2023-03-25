@@ -43,13 +43,13 @@ impl ChatList {
         &mut self,
         name: Option<String>,
     ) -> Result<Box<dyn MainWindow + '_>, anyhow::Error> {
-        let api_key = std::env::var("OPENAI_API_KEY")?;
+        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
         let mut chat = ChatAPIBuilder::new(api_key).build();
         if let Ok(system_message) = std::env::var("SYSTEM_MESSAGE") {
             if !system_message.is_empty() {
                 tokio::task::block_in_place(|| {
                     Handle::current().block_on(async {
-                        chat.system(system_message).await;
+                        chat.set_system_message(Some(system_message)).await;
                     })
                 });
             }
@@ -65,7 +65,7 @@ impl ChatList {
         &mut self,
         name: Option<String>,
     ) -> Result<Box<dyn MainWindow + '_>, anyhow::Error> {
-        let api_key = std::env::var("OPENAI_API_KEY")?;
+        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
         let complete = CompleteAPIBuilder::new(api_key).build();
         let name = name.unwrap_or_else(|| format!("complete_{}", self.complete_list.len() + 1));
         self.complete_list.insert(name.to_owned(), complete);
@@ -108,7 +108,7 @@ impl ChatList {
         Ok(())
     }
     pub fn load(&mut self) -> Result<(), anyhow::Error> {
-        let api_key = std::env::var("OPENAI_API_KEY")?;
+        let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
         let mut file = std::fs::File::open("chats.json")?;
         let value: HashMap<String, serde_json::Value> = serde_json::from_reader(&mut file)?;
         tokio::task::block_in_place(|| {
