@@ -6,14 +6,9 @@ pub enum ResponseEvent {
     None,
 }
 
+#[derive(Default)]
 pub struct ParameterControler {
     params: Vec<Box<dyn Parameter>>,
-}
-
-impl Default for ParameterControler {
-    fn default() -> Self {
-        Self { params: vec![] }
-    }
 }
 
 impl ParameterControler {
