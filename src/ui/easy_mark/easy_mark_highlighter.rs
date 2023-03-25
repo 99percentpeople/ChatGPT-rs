@@ -42,7 +42,14 @@ pub fn highlight_easymark(
             let start = text.find('\n').map_or_else(|| 3, |i| i + 1);
             job.append(&text[..start], 0.0, format_from_style(egui_style, &style));
             text = &text[start..];
-            let end = text.find("\n```").map_or_else(|| text.len(), |i| i);
+            let mut section_end = false;
+            let end = text.find("\n```").map_or_else(
+                || text.len(),
+                |i| {
+                    section_end = true;
+                    i
+                },
+            );
 
             let mut code_job = syntax_highlighting::highlight(ctx, &theme, &text[..end], language);
             let offset = job.text.len();
@@ -54,7 +61,7 @@ pub fn highlight_easymark(
             job.sections.append(&mut code_job.sections);
             job.text.push_str(&text[..end]);
 
-            if end != text.len() {
+            if section_end {
                 job.append(
                     &text[end..end + 4],
                     0.0,
