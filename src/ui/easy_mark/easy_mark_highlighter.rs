@@ -46,7 +46,7 @@ pub fn highlight_easymark(
             let offset = job.text.len();
             code_job.sections.iter_mut().for_each(|s| {
                 s.byte_range = (s.byte_range.start + offset)..(s.byte_range.end + offset);
-                s.format.background = egui_style.visuals.code_bg_color;
+                s.format.background = egui_style.visuals.extreme_bg_color;
             });
 
             job.sections.append(&mut code_job.sections);

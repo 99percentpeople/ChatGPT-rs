@@ -5,6 +5,7 @@ mod easy_mark;
 pub mod logger;
 mod model_table;
 mod parameter_control;
+
 use self::{chat_list::ChatList, logger::LoggerUi};
 use eframe::egui;
 use font_kit::{
@@ -110,37 +111,73 @@ fn setup_fonts(ctx: &egui::Context) {
     // Start with the default fonts (we will be adding to them rather than replacing them).
     let mut fonts = egui::FontDefinitions::default();
     let source = SystemSource::new();
-    let Ok(font) = source
-        .select_best_match(
-            &[FamilyName::Title("微软雅黑".to_owned())],
-            Properties::new().weight(Weight::NORMAL),
-        )
-        else {
+    let data = if let Ok(font) = source.select_best_match(
+        &[
+            FamilyName::Title("微软雅黑".to_owned()),
+            FamilyName::SansSerif,
+        ],
+        Properties::new().weight(Weight::NORMAL),
+    ) {
+        let font = match font.load() {
+            Ok(font) => font,
+            Err(err) => {
+                tracing::error!("Failed to load font: {}", err);
+                return;
+            }
+        };
+        tracing::info!("Using font: {:?}", font);
+        let Some(font_data) = font.copy_font_data() else {
             return;
         };
-    let Ok(font) = font.load() else {
+        let data = Box::leak((*font_data).clone().into_boxed_slice());
+        data
+    } else {
         return;
     };
-    tracing::info!("Using font: {:?}", font);
-    let Some(font_data) = font.copy_font_data() else {
-        return;
-    };
-    let data = Box::leak((*font_data).clone().into_boxed_slice());
 
     fonts
         .font_data
         .insert("system".to_owned(), egui::FontData::from_static(data));
-
     fonts
         .families
         .entry(egui::FontFamily::Proportional)
         .or_default()
         .insert(0, "system".to_owned());
+
+    let mono = if let Ok(font) = source.select_best_match(
+        &[
+            FamilyName::Title("YaHei Consolas Hybrid".to_owned()),
+            FamilyName::Title("Consolas".to_owned()),
+            FamilyName::Monospace,
+        ],
+        Properties::new().weight(Weight::NORMAL),
+    ) {
+        let font = match font.load() {
+            Ok(font) => font,
+            Err(err) => {
+                tracing::error!("Failed to load font: {}", err);
+                return;
+            }
+        };
+        tracing::info!("Using font: {:?}", font);
+        let Some(font_data) = font.copy_font_data() else {
+            return;
+        };
+        let data = Box::leak((*font_data).clone().into_boxed_slice());
+        data
+    } else {
+        return;
+    };
+
+    fonts
+        .font_data
+        .insert("mono".to_owned(), egui::FontData::from_static(mono));
+
     fonts
         .families
         .entry(egui::FontFamily::Monospace)
         .or_default()
-        .insert(0, "system".to_owned());
+        .insert(0, "mono".to_owned());
     ctx.set_fonts(fonts);
 }
 
