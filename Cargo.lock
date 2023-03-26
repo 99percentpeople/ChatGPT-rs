@@ -572,7 +572,6 @@ dependencies = [
  "hyper-proxy",
  "hyper-tls",
  "image",
- "poll-promise",
  "proxyconf",
  "regex",
  "serde",
@@ -2561,16 +2560,6 @@ dependencies = [
  "crc32fast",
  "flate2",
  "miniz_oxide",
-]
-
-[[package]]
-name = "poll-promise"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcf2a02372dfae23c9c01267fb296b8a3413bb4e45fbd589c3ac73c6dcfbb305"
-dependencies = [
- "static_assertions",
- "tokio",
 ]
 
 [[package]]

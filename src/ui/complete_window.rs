@@ -1,14 +1,14 @@
 use eframe::egui;
+use tokio::task::JoinHandle;
 
 use crate::api::complete::CompleteAPI;
 
 use super::{easy_mark, MainWindow, View};
-use poll_promise::Promise;
 pub struct CompleteWindow {
     window_name: String,
     complete: CompleteAPI,
     text: String,
-    promise: Option<Promise<Result<String, anyhow::Error>>>,
+    promise: Option<JoinHandle<Result<String, anyhow::Error>>>,
     highlighter: easy_mark::MemoizedEasymarkHighlighter,
     enable_markdown: bool,
 }
@@ -50,13 +50,17 @@ impl View for CompleteWindow {
         if let Some(generate) = generate {
             self.text = generate;
         }
-        if let Some(promise) = &self.promise {
-            if let Some(text) = promise.ready() {
-                if let Ok(text) = text {
-                    self.text = text.clone();
-                }
-                self.promise = None;
+        if self.promise.as_ref().is_some_and(|p| p.is_finished()) {
+            let promise = self.promise.take().unwrap();
+            let text = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(async move { promise.await })
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+            });
+            if let Ok(Ok(text)) = text {
+                self.text = text.clone();
             }
+            self.promise = None;
         }
         egui::TopBottomPanel::top("complete_top").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
@@ -74,7 +78,7 @@ impl View for CompleteWindow {
                         .clicked()
                         .then(|| {
                             let mut complete = self.complete.clone();
-                            self.promise = Some(Promise::spawn_async(async move {
+                            self.promise = Some(tokio::spawn(async move {
                                 match complete.generate().await {
                                     Ok(res) => Ok(res),
                                     Err(e) => {
