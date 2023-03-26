@@ -15,24 +15,32 @@ jobs:
         include:
           - build: linux
             os: ubuntu-latest
+            rust:
+              - nightly
+              - 1.70.0
             target: x86_64-unknown-linux-gnu
             binary-name: chatgpt-rs
             archive-name: chatgpt-rs-linux.tar.gz
           - build: macos
             os: macos-latest
-            rust: nightly
+            rust:
+              - nightly
+              - 1.70.0
             target: x86_64-apple-darwin
             binary-name: chatgpt-rs
             archive-name: chatgpt-rs-macos.tar.gz
           - build: windows
             os: windows-latest
+            rust:
+              - nightly
+              - 1.70.0
             target: x86_64-pc-windows-msvc
             binary-name: chatgpt-rs.exe
             archive-name: chatgpt-rs-windows.zip
       fail-fast: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Install dependencies for linux
         if: matrix.build == 'linux'
         run: |
@@ -45,7 +53,7 @@ jobs:
           libxkbcommon-dev libssl-dev
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
           override: true
       - name: Build binary
@@ -70,7 +78,7 @@ jobs:
             tar -czf "${{ matrix.archive-name }}" LICENSE README.md ${{ matrix.binary-name }}
           fi
       - name: Upload archive
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.archive-name }}
           path: archive/${{ matrix.archive-name }}

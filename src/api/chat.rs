@@ -8,7 +8,7 @@ use crate::client::fetch_sse;
 use crate::client::MultiClient;
 use futures::StreamExt;
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::RwLock;
