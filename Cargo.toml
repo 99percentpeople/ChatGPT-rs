@@ -15,7 +15,9 @@ eframe = { version = "0.21", default-features = false, features = [
 dotenv = "0.15.0"
 hyper = { version = "0.14", features = ["full"] }
 hyper-tls = { version = "0.5", features = ["vendored"] }
-hyper-proxy = "0.9.1"
+hyper-proxy = { version = "0.9.1", default-features = false, features = [
+    "rustls-webpki",
+] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -36,6 +38,7 @@ poll-promise = { version = "0.2.0", features = ["tokio"] }
 font-kit = "0.11.0"
 enum-map = "2.5.0"
 syntect = { version = "*", optional = true }
+proxyconf = "0.2.1"
 [features]
 default = ["syntect"]
 syntect = ["dep:syntect"]
