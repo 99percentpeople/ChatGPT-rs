@@ -38,7 +38,10 @@ poll-promise = { version = "0.2.0", features = ["tokio"] }
 font-kit = "0.11.0"
 enum-map = "2.5.0"
 syntect = { version = "*", optional = true }
+
+[target.'cfg(windows)'.dependencies]
 proxyconf = "0.2.1"
+
 [features]
 default = ["syntect"]
 syntect = ["dep:syntect"]

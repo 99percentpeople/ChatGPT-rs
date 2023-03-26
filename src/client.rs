@@ -11,22 +11,28 @@ use std::{fmt::Debug, ops::Not};
 
 use futures::Stream;
 use hyper::{Body, Response};
-use proxyconf::internet_settings::modern::registry::{get_current_user_location, read};
+
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+
 #[derive(Debug)]
 pub struct MultiClient(Box<dyn Any + Send + Sync>);
 
 impl MultiClient {
     pub fn new() -> Self {
-        let local = get_current_user_location();
-
         let https_connector = HttpsConnector::new();
-        let proxy_connector = if let Ok(proxy_uri) = std::env::var("HTTP_PROXY").or_else(|_| {
-            let config = read(&local).map_err(|e| anyhow::anyhow!("{e}"))?;
-            Ok::<String, anyhow::Error>(format!("http://{}", config.manual_proxy_address))
-        }) {
+        let proxy = std::env::var("HTTP_PROXY");
+        #[cfg(target_os = "windows")]
+        let proxy = {
+            use proxyconf::internet_settings::modern::registry::{get_current_user_location, read};
+            let local = get_current_user_location();
+            proxy.or_else(|_| {
+                let config = read(&local).map_err(|e| anyhow::anyhow!("{e}"))?;
+                Ok::<String, anyhow::Error>(format!("http://{}", config.manual_proxy_address))
+            })
+        };
+        let proxy_connector = if let Ok(proxy_uri) = proxy {
             tracing::info!("Using proxy: {}", proxy_uri);
             let proxy_uri = proxy_uri.parse().unwrap();
             let proxy = Proxy::new(Intercept::All, proxy_uri);
