@@ -334,7 +334,7 @@ impl ChatAPI {
 
         request_body.headers_mut().insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.api_key.read().await)).unwrap(),
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key.read().await))?,
         );
 
         let response = self.client.request(request_body).await?;
