@@ -12,6 +12,7 @@ pub struct CompleteWindow {
     highlighter: easy_mark::MemoizedEasymarkHighlighter,
     enable_markdown: bool,
     cursor_index: Option<usize>,
+    focused: bool,
 }
 
 impl CompleteWindow {
@@ -24,6 +25,7 @@ impl CompleteWindow {
             highlighter: Default::default(),
             enable_markdown: true,
             cursor_index: None,
+            focused: false,
         }
     }
 }
@@ -97,6 +99,7 @@ impl View for CompleteWindow {
                         });
                 });
                 if let Some(cursor_index) = self.cursor_index {
+                    tracing::warn!("cursor_index: {}", cursor_index);
                     ui.add_sized([50., 40.], egui::Button::new("Insert"))
                         .clicked()
                         .then(|| {
@@ -131,6 +134,7 @@ impl View for CompleteWindow {
                 }
             });
         });
+
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
@@ -164,13 +168,20 @@ impl View for CompleteWindow {
                                 complete.set_prompt(text).await;
                             });
                         });
-
+                        self.cursor_index = None;
                         if let Some(state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
                             if let Some(ccursor_range) = state.ccursor_range() {
                                 self.cursor_index = Some(ccursor_range.primary.index);
-                            } else {
-                                self.cursor_index = None;
                             }
+                        }
+                        if response.has_focus() {
+                            self.focused = true;
+                        }
+                        if response.lost_focus() {
+                            self.focused = false;
+                        }
+                        if !self.focused {
+                            self.cursor_index = None;
                         }
                     });
                 });
