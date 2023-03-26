@@ -18,27 +18,27 @@ pub enum ResponseEvent<'a> {
     None,
 }
 
-pub struct ChatList {
+pub struct SessionList {
     chat_list: HashMap<String, ChatAPI>,
     complete_list: HashMap<String, CompleteAPI>,
     text: String,
-    select_type: ModelType,
+    select_mode: ModelType,
     select: Option<String>,
 }
 
-impl Default for ChatList {
+impl Default for SessionList {
     fn default() -> Self {
         Self {
             chat_list: HashMap::new(),
             complete_list: HashMap::new(),
             text: String::new(),
-            select_type: ModelType::Chat,
+            select_mode: ModelType::Chat,
             select: None,
         }
     }
 }
 
-impl ChatList {
+impl SessionList {
     pub fn new_chat(
         &mut self,
         name: Option<String>,
@@ -142,7 +142,7 @@ impl ChatList {
     }
 }
 
-impl super::View for ChatList {
+impl super::View for SessionList {
     type Response<'a> = ResponseEvent<'a>;
 
     fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
@@ -162,7 +162,7 @@ impl super::View for ChatList {
                     self.text.clear();
                     name
                 };
-                match self.select_type {
+                match self.select_mode {
                     ModelType::Chat => {
                         self.new_chat(name).unwrap();
                     }
@@ -172,9 +172,9 @@ impl super::View for ChatList {
                     _ => {}
                 }
             });
-            ui.menu_button("type", |ui| {
+            ui.menu_button("mode", |ui| {
                 for t in ModelType::iter() {
-                    ui.selectable_value(&mut self.select_type, t.clone(), t.to_string());
+                    ui.selectable_value(&mut self.select_mode, t.clone(), t.to_string());
                 }
             });
         });

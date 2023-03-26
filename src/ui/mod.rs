@@ -1,12 +1,12 @@
-mod chat_list;
 mod chat_window;
 mod complete_window;
 mod easy_mark;
 pub mod logger;
 mod model_table;
 mod parameter_control;
+mod session_list;
 
-use self::{chat_list::ChatList, logger::LoggerUi};
+use self::{logger::LoggerUi, session_list::SessionList};
 use eframe::{
     egui::{self, TextStyle},
     epaint::{FontFamily, FontId},
@@ -28,7 +28,7 @@ pub enum ModelType {
 
 pub struct ChatApp {
     window: Option<Box<dyn MainWindow>>,
-    chat_list: ChatList,
+    chat_list: SessionList,
     widgets: Vec<(Box<dyn Window>, bool)>,
 
     expand_list: bool,
@@ -47,7 +47,7 @@ impl ChatApp {
     pub fn new(cc: &eframe::CreationContext) -> Self {
         setup_fonts(&cc.egui_ctx);
         let mut widgets = Vec::new();
-        let mut chat_list = ChatList::default();
+        let mut chat_list = SessionList::default();
 
         let mut style = (*cc.egui_ctx.style()).clone();
         style.text_styles.insert(
@@ -118,13 +118,13 @@ impl eframe::App for ChatApp {
             .for_each(|(view, show)| view.show(ctx, show));
         egui::SidePanel::left("left_chat_panel").show_animated(ctx, self.expand_list, |ui| {
             match self.chat_list.ui(ui) {
-                chat_list::ResponseEvent::Select(chat) => {
+                session_list::ResponseEvent::Select(chat) => {
                     self.window = Some(chat);
                 }
-                chat_list::ResponseEvent::Remove => {
+                session_list::ResponseEvent::Remove => {
                     self.window = None;
                 }
-                chat_list::ResponseEvent::None => {}
+                session_list::ResponseEvent::None => {}
             }
         });
         if let Some(window) = &mut self.window {

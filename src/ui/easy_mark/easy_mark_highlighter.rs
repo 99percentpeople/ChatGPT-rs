@@ -95,19 +95,19 @@ pub fn highlight_easymark(
             skip = 2;
         } else if start_of_line && text.starts_with("## ") {
             style.heading = 2;
-            skip = 2;
+            skip = 3;
         } else if start_of_line && text.starts_with("### ") {
             style.heading = 3;
-            skip = 2;
+            skip = 4;
         } else if start_of_line && text.starts_with("#### ") {
             style.heading = 4;
-            skip = 2;
+            skip = 5;
         } else if start_of_line && text.starts_with("##### ") {
             style.heading = 5;
-            skip = 2;
+            skip = 6;
         } else if start_of_line && text.starts_with("###### ") {
             style.heading = 6;
-            skip = 2;
+            skip = 7;
         }
         // else if start_of_line && text.starts_with(' ') {
         //     // we don't preview indentation, because it is confusing
