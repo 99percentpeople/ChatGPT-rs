@@ -15,28 +15,22 @@ jobs:
         include:
           - build: linux
             os: ubuntu-latest
-            rust:
-              - nightly
-              - 1.70.0
+            rust: nightly
             target: x86_64-unknown-linux-gnu
             binary-name: chatgpt-rs
             archive-name: chatgpt-rs-linux.tar.gz
           - build: macos
             os: macos-latest
-            rust:
-              - nightly
-              - 1.70.0
+            rust: nightly
             target: x86_64-apple-darwin
             binary-name: chatgpt-rs
             archive-name: chatgpt-rs-macos.tar.gz
           - build: windows
             os: windows-latest
-            rust:
-              - nightly
-              - 1.70.0
+            rust: nightly-x86_64-msvc
             target: x86_64-pc-windows-msvc
             binary-name: chatgpt-rs.exe
-            archive-name: chatgpt-rs-windows.zip
+            archive-name: chatgpt-rs-windows.7z
       fail-fast: false
     steps:
       - name: Checkout repository
@@ -54,6 +48,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ matrix.rust }}
+          profile: minimal
           target: ${{ matrix.target }}
           override: true
       - name: Build binary
@@ -61,6 +56,8 @@ jobs:
         with:
           command: build
           args: --release --target=${{ matrix.target }}
+        env:
+          RUST_BACKTRACE: 1
       - name: Strip binary (linux and macos)
         if: matrix.build == 'linux' || matrix.build == 'macos'
         run: strip "target/${{ matrix.target }}/release/${{ matrix.binary-name }}"
