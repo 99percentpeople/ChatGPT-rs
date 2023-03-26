@@ -12,7 +12,6 @@ pub struct CompleteWindow {
     highlighter: easy_mark::MemoizedEasymarkHighlighter,
     enable_markdown: bool,
     cursor_index: Option<usize>,
-    focused: bool,
 }
 
 impl CompleteWindow {
@@ -25,7 +24,6 @@ impl CompleteWindow {
             highlighter: Default::default(),
             enable_markdown: true,
             cursor_index: None,
-            focused: false,
         }
     }
 }
@@ -47,15 +45,16 @@ impl View for CompleteWindow {
     fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
         let generate =
             tokio::task::block_in_place(|| self.complete.pending_generate.blocking_read().clone());
-        let suffix =
-            tokio::task::block_in_place(|| self.complete.complete.blocking_read().suffix.clone());
+
         let is_ready = generate.is_none() && self.promise.is_none();
         if !is_ready {
             ui.ctx().request_repaint();
         }
         if let Some(generate) = generate {
             self.text = generate;
-            if let Some(suffix) = suffix {
+            if let Some(suffix) = tokio::task::block_in_place(|| {
+                self.complete.complete.blocking_read().suffix.clone()
+            }) {
                 self.text.push_str(&suffix);
             }
         }
@@ -69,7 +68,6 @@ impl View for CompleteWindow {
             if let Ok(Ok(text)) = text {
                 self.text = text.clone();
             }
-            self.promise = None;
         }
         egui::TopBottomPanel::top("complete_top").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
@@ -86,7 +84,7 @@ impl View for CompleteWindow {
                     ui.add_sized([50., 40.], egui::Button::new("Complete"))
                         .clicked()
                         .then(|| {
-                            let mut complete = self.complete.clone();
+                            let complete = self.complete.clone();
                             self.promise = Some(tokio::spawn(async move {
                                 match complete.generate().await {
                                     Ok(res) => Ok(res),
@@ -97,23 +95,23 @@ impl View for CompleteWindow {
                                 }
                             }));
                         });
-                });
-                if let Some(cursor_index) = self.cursor_index {
-                    ui.add_sized([50., 40.], egui::Button::new("Insert"))
-                        .clicked()
-                        .then(|| {
-                            let mut complete = self.complete.clone();
-                            self.promise = Some(tokio::spawn(async move {
-                                match complete.insert(cursor_index).await {
-                                    Ok(res) => Ok(res),
-                                    Err(e) => {
-                                        tracing::error!("{}", e);
-                                        Err(e)
+                    if let Some(cursor_index) = self.cursor_index {
+                        ui.add_sized([50., 40.], egui::Button::new("Insert"))
+                            .clicked()
+                            .then(|| {
+                                let complete = self.complete.clone();
+                                self.promise = Some(tokio::spawn(async move {
+                                    match complete.insert(cursor_index).await {
+                                        Ok(res) => Ok(res),
+                                        Err(e) => {
+                                            tracing::error!("{}", e);
+                                            Err(e)
+                                        }
                                     }
-                                }
-                            }));
-                        });
-                }
+                                }));
+                            });
+                    }
+                });
                 if !is_ready {
                     ui.add_sized([50., 40.], egui::Button::new("Abort"))
                         .clicked()
@@ -167,16 +165,11 @@ impl View for CompleteWindow {
                                 complete.set_prompt(text).await;
                             });
                         });
-                        if response.has_focus() {
-                            self.focused = true;
-                        }
-                        if response.lost_focus() {
-                            self.focused = false;
-                        }
                         self.cursor_index = None;
-                        if let Some(state) = egui::TextEdit::load_state(ui.ctx(), response.id) && 
-                            let Some(ccursor_range) = state.ccursor_range() && self.focused {
+                        if let Some(state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
+                            if let Some(ccursor_range) = state.ccursor_range() {
                                 self.cursor_index = Some(ccursor_range.primary.index);
+                            }
                         }
                     });
                 });

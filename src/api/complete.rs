@@ -56,7 +56,7 @@ impl CompleteAPI {
     pub async fn set_prompt(&mut self, prompt: String) {
         self.complete.write().await.prompt = prompt;
     }
-    pub async fn generate(&mut self) -> Result<String, anyhow::Error> {
+    pub async fn generate(&self) -> Result<String, anyhow::Error> {
         let mut stream = self.complete().await?;
         *self.pending_generate.write().await = Some(self.complete.read().await.prompt.clone());
         while let Some(res) = stream.next().await {
@@ -68,6 +68,7 @@ impl CompleteAPI {
                     return Err(e);
                 }
             };
+
             let mut pending_generate = self.pending_generate.write().await;
             let pending_generate = pending_generate.as_mut().unwrap();
             let Some(choices) = &res.choices else {
@@ -93,16 +94,19 @@ impl CompleteAPI {
         self.complete.write().await.prompt = text.clone();
         Ok(text)
     }
-    pub async fn insert(&mut self, index: usize) -> Result<String, anyhow::Error> {
+    pub async fn insert(&self, index: usize) -> Result<String, anyhow::Error> {
         {
             let mut complete = self.complete.write().await;
             let prompt = complete.prompt.clone();
-            let (prompt, suffix) = prompt.split_at(index);
+            let (prompt, suffix) = split_by_char(&prompt, index);
             complete.prompt = prompt.to_string();
             complete.suffix = Some(suffix.to_string());
         }
-        let res = self.generate().await?;
-        Ok(res)
+        // tracing::info!(
+        //     prompt = complete.prompt,
+        //     suffix = complete.suffix.as_ref().unwrap_or(&"".to_string())
+        // );
+        Ok(self.generate().await?)
     }
     async fn complete(
         &self,
@@ -170,4 +174,13 @@ pub struct Complete {
     n: Option<u32>,
     stream: Option<bool>,
     logprobs: Option<u32>,
+}
+
+fn split_by_char(string: &str, mid: usize) -> (&str, &str) {
+    let mut len = 0;
+    for ch in string.chars().by_ref().take(mid) {
+        len += ch.len_utf8();
+    }
+
+    (&string[..len], &string[len..])
 }

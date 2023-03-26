@@ -3,7 +3,7 @@
 #![feature(fn_traits)]
 #![feature(specialization)]
 #![feature(panic_info_message)]
-#![feature(let_chains)]
+
 use eframe::egui;
 use std::error::Error;
 use std::{fs, io::Write, panic};

@@ -246,10 +246,12 @@ impl super::View for ChatList {
                     });
                 });
         }
-        if let Some(select) = &self.select && 
-            (remove_chat.as_ref().is_some_and(|v| v == select) 
-                || remove_complete.as_ref().is_some_and(|v| v == select)) {
+        if let Some(select) = &self.select {
+            if remove_chat.as_ref().is_some_and(|v| v == select)
+                || remove_complete.as_ref().is_some_and(|v| v == select)
+            {
                 event = ResponseEvent::Remove;
+            }
         }
         if let Some(name) = remove_chat {
             self.remove_chat(&name);

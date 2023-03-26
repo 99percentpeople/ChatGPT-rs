@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 
 pub mod chat;
 pub mod complete;
