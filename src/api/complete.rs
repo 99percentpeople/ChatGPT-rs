@@ -85,10 +85,25 @@ impl CompleteAPI {
         let Some(text) = self.pending_generate.write().await.take()  else {
             return Err(anyhow::anyhow!("No text generated"));
         };
+        let text = if let Some(suffix) = &self.complete.write().await.suffix.take() {
+            format!("{}{}", text, suffix)
+        } else {
+            text
+        };
         self.complete.write().await.prompt = text.clone();
         Ok(text)
     }
-
+    pub async fn insert(&mut self, index: usize) -> Result<String, anyhow::Error> {
+        {
+            let mut complete = self.complete.write().await;
+            let prompt = complete.prompt.clone();
+            let (prompt, suffix) = prompt.split_at(index);
+            complete.prompt = prompt.to_string();
+            complete.suffix = Some(suffix.to_string());
+        }
+        let res = self.generate().await?;
+        Ok(res)
+    }
     async fn complete(
         &self,
     ) -> Result<impl Stream<Item = Result<CompleteCompletion, anyhow::Error>>, anyhow::Error> {
@@ -148,7 +163,7 @@ impl CompleteAPIBuilder {
 pub struct Complete {
     model: String,
     pub prompt: String,
-    suffix: Option<String>,
+    pub suffix: Option<String>,
     max_tokens: Option<u32>,
     temperature: Option<f32>,
     top_p: Option<f32>,

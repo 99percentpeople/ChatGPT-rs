@@ -44,7 +44,7 @@ impl ChatList {
         name: Option<String>,
     ) -> Result<Box<dyn MainWindow + '_>, anyhow::Error> {
         let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
-        let mut chat = ChatAPIBuilder::new(api_key).build();
+        let chat = ChatAPIBuilder::new(api_key).build();
         if let Ok(system_message) = std::env::var("SYSTEM_MESSAGE") {
             if !system_message.is_empty() {
                 tokio::task::block_in_place(|| {

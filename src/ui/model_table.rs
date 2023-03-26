@@ -68,7 +68,7 @@ impl super::View for ModelTable {
                     }
 
                     ModelType::Complete => todo!(),
-                    ModelType::Insert => todo!(),
+                    ModelType::Edit => todo!(),
                 }
             });
             // if let Some(models) = models {

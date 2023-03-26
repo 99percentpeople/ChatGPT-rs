@@ -23,7 +23,7 @@ use strum::{Display, EnumIter};
 pub enum ModelType {
     Chat,
     Complete,
-    Insert,
+    Edit,
 }
 
 pub struct ChatApp {

@@ -250,7 +250,7 @@ impl super::Window for LoggerUi {
 impl super::View for LoggerUi {
     type Response<'a> = ();
     fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
-        egui::TopBottomPanel::top("lg_top").show_inside(ui, |ui| {
+        egui::TopBottomPanel::top("log_top").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Search: ");
                 let response = ui.text_edit_singleline(&mut self.search_term);
@@ -357,7 +357,7 @@ impl super::View for LoggerUi {
             let mut logs_displayed_content = logs_iter.collect::<Vec<_>>();
             logs_displayed_content.reverse();
             self.logs_displayed = 0;
-            egui::ScrollArea::new([true, true])
+            egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     logs_displayed_content.iter().for_each(|data| {
@@ -366,7 +366,6 @@ impl super::View for LoggerUi {
                             return;
                         }
                         let mut job = text::LayoutJob::default();
-                        // let first_row_indentation = 10.0;
                         let (level, color) = match data.level {
                             Level::Warn => ("[WARN]", epaint::Color32::YELLOW),
                             Level::Error => ("[ERROR]", epaint::Color32::RED),
@@ -389,8 +388,9 @@ impl super::View for LoggerUi {
                                 ..Default::default()
                             },
                         );
-
-                        ui.add(egui::Label::new(job));
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add(egui::Label::new(job));
+                        });
 
                         self.logs_displayed += 1;
                         self.copy_text += content;

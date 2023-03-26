@@ -11,6 +11,7 @@ pub struct CompleteWindow {
     promise: Option<JoinHandle<Result<String, anyhow::Error>>>,
     highlighter: easy_mark::MemoizedEasymarkHighlighter,
     enable_markdown: bool,
+    cursor_index: Option<usize>,
 }
 
 impl CompleteWindow {
@@ -22,6 +23,7 @@ impl CompleteWindow {
             promise: None,
             highlighter: Default::default(),
             enable_markdown: true,
+            cursor_index: None,
         }
     }
 }
@@ -43,12 +45,17 @@ impl View for CompleteWindow {
     fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
         let generate =
             tokio::task::block_in_place(|| self.complete.pending_generate.blocking_read().clone());
+        let suffix =
+            tokio::task::block_in_place(|| self.complete.complete.blocking_read().suffix.clone());
         let is_ready = generate.is_none() && self.promise.is_none();
         if !is_ready {
             ui.ctx().request_repaint();
         }
         if let Some(generate) = generate {
             self.text = generate;
+            if let Some(suffix) = suffix {
+                self.text.push_str(&suffix);
+            }
         }
         if self.promise.as_ref().is_some_and(|p| p.is_finished()) {
             let promise = self.promise.take().unwrap();
@@ -89,6 +96,22 @@ impl View for CompleteWindow {
                             }));
                         });
                 });
+                if let Some(cursor_index) = self.cursor_index {
+                    ui.add_sized([50., 40.], egui::Button::new("Insert"))
+                        .clicked()
+                        .then(|| {
+                            let mut complete = self.complete.clone();
+                            self.promise = Some(tokio::spawn(async move {
+                                match complete.insert(cursor_index).await {
+                                    Ok(res) => Ok(res),
+                                    Err(e) => {
+                                        tracing::error!("{}", e);
+                                        Err(e)
+                                    }
+                                }
+                            }));
+                        });
+                }
                 if !is_ready {
                     ui.add_sized([50., 40.], egui::Button::new("Abort"))
                         .clicked()
@@ -113,7 +136,7 @@ impl View for CompleteWindow {
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     ui.add_enabled_ui(is_ready, |ui| {
-                        if self.enable_markdown {
+                        let response = if self.enable_markdown {
                             let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
                                 let mut layout_job = self.highlighter.highlight(ui, easymark);
                                 layout_job.wrap.max_width = wrap_width;
@@ -132,15 +155,23 @@ impl View for CompleteWindow {
                                 egui::TextEdit::multiline(&mut self.text)
                                     .desired_width(f32::INFINITY),
                             )
-                        }
-                        .changed()
-                        .then(|| {
+                        };
+
+                        response.changed().then(|| {
                             let mut complete = self.complete.clone();
                             let text = self.text.clone();
                             tokio::spawn(async move {
                                 complete.set_prompt(text).await;
                             });
                         });
+
+                        if let Some(state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
+                            if let Some(ccursor_range) = state.ccursor_range() {
+                                self.cursor_index = Some(ccursor_range.primary.index);
+                            } else {
+                                self.cursor_index = None;
+                            }
+                        }
                     });
                 });
         });
