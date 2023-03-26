@@ -29,7 +29,12 @@ impl MultiClient {
             let local = get_current_user_location();
             proxy.or_else(|_| {
                 let config = read(&local).map_err(|e| anyhow::anyhow!("{e}"))?;
-                Ok::<String, anyhow::Error>(format!("http://{}", config.manual_proxy_address))
+                let proxy_url = if config.manual_proxy_address.starts_with("http") {
+                    config.manual_proxy_address
+                } else {
+                    format!("http://{}", config.manual_proxy_address)
+                };
+                Ok::<String, anyhow::Error>(proxy_url)
             })
         };
         let proxy_connector = if let Ok(proxy_uri) = proxy {

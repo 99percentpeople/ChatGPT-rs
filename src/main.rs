@@ -4,18 +4,23 @@
 #![feature(specialization)]
 use eframe::egui;
 use std::error::Error;
+use std::{fs, panic};
 use tracing::Level;
 use tracing_subscriber::prelude::*;
-
 mod api;
 mod client;
-mod fetch_sse;
 mod ui;
 
 use ui::logger::Logger;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    panic::set_hook(Box::new(|panic_info| {
+        if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            fs::write("panic.log", s).ok();
+        }
+    }));
+
     dotenv::dotenv().ok();
     tracing_subscriber::registry()
         .with(Logger::new(Level::TRACE))
@@ -29,7 +34,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     local.spawn_local(async move {
         eframe::run_native(
-            "Chat App",
+            "ChatGPT-rs",
             options,
             Box::new(|cc| Box::new(ui::ChatApp::new(cc))),
         )

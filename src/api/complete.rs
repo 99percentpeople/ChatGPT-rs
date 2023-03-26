@@ -102,7 +102,7 @@ impl CompleteAPI {
             .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         request_body.headers_mut().insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap(),
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key))?,
         );
         let response = self.client.request(request_body).await?;
         let stream = fetch_sse::<CompleteCompletion>(response);
