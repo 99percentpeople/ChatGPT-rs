@@ -203,7 +203,7 @@ impl ParameterControl for CompleteAPI {
         v.push(Box::new(Param {
             name: "max_tokens",
             range: Some((1, 4000).into()),
-            default: Some(4000).into(),
+            default: 2048.into(),
             store: RefCell::new(tokio::task::block_in_place(|| {
                 self.complete.blocking_read().max_tokens
             })),
