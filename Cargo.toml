@@ -14,7 +14,7 @@ eframe = { version = "0.21", default-features = false, features = [
 ] }
 dotenv = "0.15.0"
 hyper = { version = "0.14", features = ["full"] }
-hyper-tls = { version = "0.5", features = ["vendored"] }
+hyper-tls = { version = "0.5" }
 hyper-proxy = { version = "0.9.1", default-features = false, features = [
     "rustls-webpki",
 ] }
