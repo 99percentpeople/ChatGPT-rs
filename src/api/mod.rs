@@ -28,6 +28,7 @@ pub enum ParameterValue {
     OptionalNumber(Option<f32>),
     OptionalInteger(Option<u32>),
     OptionalString(Option<String>),
+    StringArray(Vec<String>),
 }
 
 impl From<f32> for ParameterValue {
@@ -186,6 +187,24 @@ impl Parameter for Param<String> {
         ParameterValue::String(self.store.borrow().clone())
     }
 }
+
+impl Parameter for Param<Vec<String>> {
+    fn set(&self, value: ParameterValue) {
+        if let ParameterValue::StringArray(value) = value {
+            self.setter.call((value.clone(),));
+            self.store.replace(value);
+        }
+    }
+
+    fn get(&self) -> ParameterValue {
+        ParameterValue::StringArray(self.getter.call(()))
+    }
+
+    fn store(&self) -> ParameterValue {
+        ParameterValue::StringArray(self.store.borrow().clone())
+    }
+}
+
 pub trait ParameterControl {
     fn params(&self) -> Vec<Box<dyn Parameter>>;
 }

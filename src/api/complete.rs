@@ -1,20 +1,24 @@
 use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Request, Uri};
 use serde::{Deserialize, Serialize};
+use tokio::task;
 
 use crate::client::fetch_sse;
 use crate::client::MultiClient;
 use futures::StreamExt;
 
+use std::cell::RefCell;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_stream::Stream;
+
+use super::{Param, ParameterControl};
 
 #[derive(Debug, Clone)]
 pub struct CompleteAPI {
     pub complete: Arc<RwLock<Complete>>,
     pub pending_generate: Arc<RwLock<Option<String>>>,
-    api_key: String,
+    api_key: Arc<RwLock<String>>,
     client: Arc<MultiClient>,
 }
 
@@ -121,7 +125,7 @@ impl CompleteAPI {
             .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         request_body.headers_mut().insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.api_key))?,
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key.read().await))?,
         );
         let response = self.client.request(request_body).await?;
         let stream = fetch_sse::<CompleteCompletion>(response);
@@ -140,9 +144,12 @@ impl CompleteAPIBuilder {
             model: CompleteAPI::DEFAULT_MODEL.to_string(),
             prompt: "".to_string(),
             suffix: None,
-            max_tokens: Some(2048),
-            temperature: None,
+            max_tokens: Some(100),
+            temperature: Some(0.3),
             top_p: None,
+            presence_penalty: Some(0.),
+            frequency_penalty: Some(0.),
+            stop: Vec::new(),
             n: None,
             stream: Some(true),
             logprobs: None,
@@ -157,20 +164,25 @@ impl CompleteAPIBuilder {
         CompleteAPI {
             complete: Arc::new(RwLock::new(self.complete)),
             pending_generate: Arc::new(RwLock::new(None)),
-            api_key: self.api_key,
+            api_key: Arc::new(RwLock::new(self.api_key)),
             client: Arc::new(MultiClient::new()),
         }
     }
 }
 
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Complete {
     model: String,
     pub prompt: String,
     pub suffix: Option<String>,
-    max_tokens: Option<u32>,
-    temperature: Option<f32>,
-    top_p: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stop: Vec<String>,
     n: Option<u32>,
     stream: Option<bool>,
     logprobs: Option<u32>,
@@ -183,4 +195,145 @@ fn split_by_char(string: &str, mid: usize) -> (&str, &str) {
     }
 
     (&string[..len], &string[len..])
+}
+
+impl ParameterControl for CompleteAPI {
+    fn params(&self) -> Vec<Box<dyn super::Parameter>> {
+        let mut v = Vec::new();
+        v.push(Box::new(Param {
+            name: "max_tokens",
+            range: Some((1, 4000).into()),
+            default: Some(4000).into(),
+            store: RefCell::new(tokio::task::block_in_place(|| {
+                self.complete.blocking_read().max_tokens
+            })),
+            getter: {
+                let complete = self.complete.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| complete.blocking_read().max_tokens)
+                })
+            },
+            setter: {
+                let complete = self.complete.clone();
+                Box::new(move |max_tokens| {
+                    let complete = complete.clone();
+                    tokio::spawn(async move {
+                        complete.write().await.max_tokens = max_tokens;
+                    });
+                })
+            },
+        }) as Box<dyn super::Parameter>);
+        v.push(Box::new(Param {
+            name: "temperature",
+            range: Some((0., 2.).into()),
+            default: (0.3).into(),
+            store: RefCell::new(0.3),
+            getter: {
+                let complete = self.complete.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| {
+                        complete.blocking_read().temperature.unwrap_or(0.3)
+                    })
+                })
+            },
+            setter: {
+                let complete = self.complete.clone();
+                Box::new(move |temperature| {
+                    let complete = complete.clone();
+                    tokio::spawn(async move {
+                        complete.write().await.temperature = Some(temperature);
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param {
+            name: "top_p",
+            range: Some((0., 2.).into()),
+            default: (1.).into(),
+            store: RefCell::new(1.),
+            getter: {
+                let complete = self.complete.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| complete.blocking_read().top_p.unwrap_or(1.))
+                })
+            },
+            setter: {
+                let complete = self.complete.clone();
+                Box::new(move |top_p| {
+                    let complete = complete.clone();
+                    tokio::spawn(async move {
+                        complete.write().await.top_p = Some(top_p);
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param {
+            name: "presence_penalty",
+            range: Some((-2., 2.).into()),
+            default: (0.).into(),
+            store: RefCell::new(0.),
+            getter: {
+                let complete = self.complete.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| {
+                        complete.blocking_read().presence_penalty.unwrap_or(0.)
+                    })
+                })
+            },
+            setter: {
+                let complete = self.complete.clone();
+                Box::new(move |presence_penalty| {
+                    let data = complete.clone();
+                    tokio::spawn(async move {
+                        data.write().await.presence_penalty = Some(presence_penalty);
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param {
+            name: "frequency_penalty",
+            range: Some((-2., 2.).into()),
+            default: (0.).into(),
+            store: RefCell::new(0.),
+            getter: {
+                let complete = self.complete.clone();
+                Box::new(move || {
+                    tokio::task::block_in_place(|| {
+                        complete.blocking_read().frequency_penalty.unwrap_or(0.)
+                    })
+                })
+            },
+            setter: {
+                let complete = self.complete.clone();
+                Box::new(move |frequency_penalty| {
+                    let data = complete.clone();
+                    tokio::spawn(async move {
+                        data.write().await.frequency_penalty = Some(frequency_penalty);
+                    });
+                })
+            },
+        }));
+        v.push(Box::new(Param::<String> {
+            name: "api_key",
+            range: None,
+            default: task::block_in_place(|| self.api_key.blocking_read().clone()).into(),
+            store: task::block_in_place(|| self.api_key.blocking_read().clone()).into(),
+            getter: {
+                let _self = self.clone();
+                Box::new(move || {
+                    task::block_in_place(|| _self.api_key.blocking_read().clone()).into()
+                })
+            },
+            setter: {
+                let mut _self = self.clone();
+                Box::new(move |api_key| {
+                    let _self = _self.clone();
+                    tokio::spawn(async move {
+                        *_self.api_key.write().await = api_key;
+                    });
+                })
+            },
+        }));
+        v
+    }
 }

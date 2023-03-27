@@ -63,12 +63,12 @@ impl super::MainWindow for ChatWindow {
         });
     }
     fn actions(&mut self, ui: &mut egui::Ui) {
-        ui.selectable_label(self.show_model_table, "Model Table")
+        ui.selectable_label(self.show_model_table, "Model")
             .clicked()
             .then(|| {
                 self.show_model_table = !self.show_model_table;
             });
-        ui.selectable_label(self.show_parameter_control, "Parameter Control")
+        ui.selectable_label(self.show_parameter_control, "Tuning")
             .clicked()
             .then(|| {
                 self.show_parameter_control = !self.show_parameter_control;

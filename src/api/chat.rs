@@ -19,6 +19,7 @@ use super::{Param, Parameter, ParameterControl};
 /// POST https://api.openai.com/v1/chat/completions
 ///
 /// Creates a completion for the chat message
+#[serde_with::skip_serializing_none]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Chat {
     /// `string` `Required`
@@ -143,7 +144,7 @@ impl ChatAPIBuilder {
             chat: Chat {
                 model: ChatAPI::DEFAULT_MODEL.to_string(),
                 messages: VecDeque::new(),
-                temperature: Some(1.),
+                temperature: Some(0.3),
                 top_p: Some(1.),
                 n: Some(1),
                 stream: Some(true),
@@ -369,12 +370,12 @@ impl ParameterControl for ChatAPI {
         v.push(Box::new(Param {
             name: "temperature",
             range: Some((0., 2.).into()),
-            default: (1.).into(),
-            store: RefCell::new(1.),
+            default: (0.3).into(),
+            store: RefCell::new(0.3),
             getter: {
                 let data = self.data.clone();
                 Box::new(move || {
-                    tokio::task::block_in_place(|| data.blocking_read().temperature.unwrap_or(1.))
+                    tokio::task::block_in_place(|| data.blocking_read().temperature.unwrap_or(0.3))
                 })
             },
             setter: {

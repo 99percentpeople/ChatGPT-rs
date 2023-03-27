@@ -1,25 +1,30 @@
 use eframe::egui;
 use tokio::task::JoinHandle;
 
-use crate::api::complete::CompleteAPI;
+use crate::api::{complete::CompleteAPI, ParameterControl};
 
-use super::{easy_mark, MainWindow, View};
+use super::{easy_mark, parameter_control::ParameterControler, MainWindow, View};
 pub struct CompleteWindow {
     window_name: String,
     complete: CompleteAPI,
     text: String,
     promise: Option<JoinHandle<Result<String, anyhow::Error>>>,
     highlighter: easy_mark::MemoizedEasymarkHighlighter,
+    parameter_control: ParameterControler,
+    show_parameter_control: bool,
     enable_markdown: bool,
     cursor_index: Option<usize>,
 }
 
 impl CompleteWindow {
     pub fn new(window_name: String, complete: CompleteAPI) -> Self {
+        let parameter_control = ParameterControler::new(complete.params());
         Self {
             window_name,
             text: tokio::task::block_in_place(|| complete.complete.blocking_read().prompt.clone()),
             complete,
+            parameter_control,
+            show_parameter_control: false,
             promise: None,
             highlighter: Default::default(),
             enable_markdown: true,
@@ -37,6 +42,14 @@ impl MainWindow for CompleteWindow {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.ui(ui);
         });
+    }
+
+    fn actions(&mut self, ui: &mut egui::Ui) {
+        ui.selectable_label(self.show_parameter_control, "Tuning")
+            .clicked()
+            .then(|| {
+                self.show_parameter_control = !self.show_parameter_control;
+            });
     }
 }
 
@@ -131,6 +144,13 @@ impl View for CompleteWindow {
                 }
             });
         });
+        egui::SidePanel::right("complete_right").show_animated_inside(
+            ui,
+            self.show_parameter_control,
+            |ui| {
+                self.parameter_control.ui(ui);
+            },
+        );
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::ScrollArea::vertical()

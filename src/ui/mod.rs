@@ -1,5 +1,6 @@
 mod chat_window;
 mod complete_window;
+mod components;
 mod easy_mark;
 pub mod logger;
 mod model_table;
