@@ -15,6 +15,8 @@ ChatGPT-rs provides the following features:
 - :art: **Syntax highlighting:** ChatGPT-rs includes syntax highlighting for programming languages, making it easy to share code snippets in your conversation.
 - :iphone: **Compatibility:** ChatGPT-rs is designed to work on multiple platforms, including Windows, Mac, and Linux.
 
+If you want to display the markdown code font properly, we recommend installing the "YaHei Consolas Hybrid 1.12.ttf" font from the "fonts" directory in the project repository.
+
 ![1](./image/1.png)
 
 ![2](./image/2.png)
@@ -35,7 +37,7 @@ Before you can use ChatGPT-rs, you need to obtain an OpenAI API key. To obtain a
 2. Once you have an account, go to the [Dashboard](https://platform.openai.com/account/api-keys) and click on the "Create new secret key" button.
 3. Follow the instructions to create a new API key.
 
-Once you have obtained an API key, create a `.env` file in the root directory of the project and add the following line:
+Once you have obtained an API key, create a `.env` file in the root directory of the project and add the following line. Alternatively, you can set environment variable in your system:
 
 ```
 OPENAI_API_KEY=YOUR_SECRET_KEY
@@ -45,7 +47,7 @@ Replace `YOUR_SECRET_KEY` with your actual API key.
 
 #### Proxy
 
-If you need to use an HTTP proxy to connect to the OpenAI API, you can add the following line to the `.env` file:
+By default, ChatGPT-rs now uses the system's default proxy settings. If you need to use a specific proxy to connect to the OpenAI API, you can add the following line to the `.env` file or set environment variable:
 
 ```
 HTTP_PROXY=YOUR_PROXY_ADDRESS
@@ -55,7 +57,7 @@ Replace `YOUR_PROXY_ADDRESS` with your actual proxy address.
 
 #### System Message
 
-If you need to store a system message before the conversation starts, you can add the following line to the `.env` file:
+If you need to store a system message before the conversation starts, you can add the following line to the `.env` file or set environment variable:
 
 ```
 SYSTEM_MESSAGE=YOUR_MESSAGE
@@ -67,7 +69,7 @@ Replace `YOUR_MESSAGE` with your actual system message. The first chat message w
 
 To start chatting with GPT
 
-You will be prompted to enter the prompt you want to use to start the conversation. After that, you can start chatting with GPT!
+In the latest version, ChatGPT-rs has a new tabbed interface that allows you to chat with multiple users simultaneously. Simply click on the label to open a new conversation tab.
 
 ## License
 
