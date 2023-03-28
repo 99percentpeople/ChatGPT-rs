@@ -172,13 +172,16 @@ impl ListView {
 
         let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
         let value: HashMap<String, serde_json::Value> = serde_json::from_reader(&mut file)?;
-
-        let chats = serde_json::from_value::<HashMap<String, Chat>>(
-            value.get("chat").ok_or(anyhow::anyhow!(""))?.clone(),
-        )?;
-        let completes = serde_json::from_value::<HashMap<String, Complete>>(
-            value.get("complete").ok_or(anyhow::anyhow!(""))?.clone(),
-        )?;
+        let chats = if let Some(value) = value.get("chat") {
+            serde_json::from_value::<HashMap<String, Chat>>(value.clone())?
+        } else {
+            HashMap::new()
+        };
+        let completes = if let Some(value) = value.get("complete") {
+            serde_json::from_value::<HashMap<String, Complete>>(value.clone())?
+        } else {
+            HashMap::new()
+        };
         self.views.clear();
         for (name, chat) in chats {
             let chat = ChatAPIBuilder::new(api_key.clone()).with_data(chat).build();
