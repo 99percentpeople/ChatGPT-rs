@@ -12,7 +12,8 @@ use std::{
 use tokio::task::JoinHandle;
 
 use super::{
-    easy_mark, model_table::ModelTable, parameter_control::ParameterControler, ModelType, View,
+    easy_mark, model_table::ModelTable, parameter_control::ParameterControler, ModelType,
+    TabWindow, View,
 };
 
 pub struct ChatWindow {
@@ -28,6 +29,7 @@ pub struct ChatWindow {
     toasts: Toasts,
     highlighter: Rc<RefCell<easy_mark::MemoizedEasymarkHighlighter>>,
     enable_markdown: bool,
+    edit_focused: bool,
 }
 
 impl ChatWindow {
@@ -49,11 +51,16 @@ impl ChatWindow {
                 easy_mark::MemoizedEasymarkHighlighter::default(),
             )),
             enable_markdown: true,
+            edit_focused: false,
         }
     }
 }
 
-impl super::MainWindow for ChatWindow {
+impl super::TabWindow for ChatWindow {
+    fn set_name(&mut self, name: String) {
+        self.window_name = name;
+    }
+
     fn name(&self) -> &str {
         &self.window_name
     }
@@ -89,19 +96,26 @@ impl ChatWindow {
                 .desired_width(f32::INFINITY)
                 .desired_rows(1)
                 .layouter(&mut layouter)
-                .show(ui);
+                .show(ui)
         } else {
             egui::TextEdit::multiline(&mut text)
                 .desired_width(f32::INFINITY)
                 .desired_rows(1)
-                .show(ui);
+                .show(ui)
         }
+        .response
+        .context_menu(|ui| {
+            ui.button("Copy All").clicked().then(|| {
+                ui.output_mut(|o| o.copied_text = text.to_string());
+                ui.close_menu();
+            });
+        });
     }
 }
 
 impl super::View for ChatWindow {
-    type Response<'a> = ();
-    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
+    type Response = ();
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response {
         let chat = tokio::task::block_in_place(|| self.chatgpt.data.blocking_read().clone());
         let generate_res = self.chatgpt.get_generate();
         let is_error = generate_res
@@ -119,24 +133,27 @@ impl super::View for ChatWindow {
         if is_ready {
             self.complete_handle.take();
         }
-        egui::SidePanel::left("left_panel").show_animated_inside(ui, self.show_model_table, |ui| {
-            match self.model_table.ui(ui) {
+
+        egui::SidePanel::left(format!("left_{}", self.name())).show_animated_inside(
+            ui,
+            self.show_model_table,
+            |ui| match self.model_table.ui(ui) {
                 super::model_table::ResponseEvent::SelectModel(id) => {
                     let mut chatgpt = self.chatgpt.clone();
                     tokio::spawn(async move { chatgpt.set_model(id).await });
                 }
                 _ => {}
-            }
-        });
+            },
+        );
 
-        egui::SidePanel::right("right_panel").show_animated_inside(
+        egui::SidePanel::right(format!("right_{}", self.name())).show_animated_inside(
             ui,
             self.show_parameter_control,
             |ui| {
                 self.parameter_control.ui(ui);
             },
         );
-        egui::TopBottomPanel::top("chat_top_panel").show_inside(ui, |ui| {
+        egui::TopBottomPanel::top(format!("top_{}", self.name())).show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading(&self.window_name);
                 ui.separator();
@@ -146,10 +163,12 @@ impl super::View for ChatWindow {
                 });
             });
         });
-        egui::TopBottomPanel::bottom("bottom_panel").show_inside(ui, |ui| {
+        egui::TopBottomPanel::bottom(format!("bottom_{}", self.name())).show_inside(ui, |ui| {
             ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
                 ui.add_enabled_ui(is_ready, |ui| {
-                    if ui.input_mut(|i| i.consume_key(Modifiers::NONE, egui::Key::Enter)) {
+                    if self.edit_focused
+                        && ui.input_mut(|i| i.consume_key(Modifiers::NONE, egui::Key::Enter))
+                    {
                         let input_text = self.text.trim().to_string();
                         if !input_text.is_empty() {
                             let mut chat = self.chatgpt.clone();
@@ -163,8 +182,10 @@ impl super::View for ChatWindow {
                             return;
                         }
                     }
-
-                    ui.add(egui::TextEdit::multiline(&mut self.text).desired_width(f32::INFINITY));
+                    let response = ui.add(
+                        egui::TextEdit::multiline(&mut self.text).desired_width(f32::INFINITY),
+                    );
+                    self.edit_focused = response.has_focus();
                 });
                 ui.add_space(5.);
                 ui.horizontal(|ui| {
@@ -246,9 +267,7 @@ impl super::View for ChatWindow {
                             {
                                 message(
                                     ui,
-                                    |ui| {
-                                        self.selectable_text(ui, &generate);
-                                    },
+                                    |ui| self.selectable_text(ui, &generate),
                                     &Role::Assistant,
                                 );
                             }

@@ -16,7 +16,7 @@ use super::{Param, ParameterControl};
 
 #[derive(Debug, Clone)]
 pub struct CompleteAPI {
-    pub complete: Arc<RwLock<Complete>>,
+    pub data: Arc<RwLock<Complete>>,
     pub pending_generate: Arc<RwLock<Option<String>>>,
     api_key: Arc<RwLock<String>>,
     client: Arc<MultiClient>,
@@ -57,12 +57,17 @@ struct CompleteUsage {
 impl CompleteAPI {
     const DEFAULT_MODEL: &'static str = "text-davinci-003";
     const URL: &'static str = "https://api.openai.com/v1/completions";
+
+    pub fn data(&self) -> Complete {
+        task::block_in_place(|| self.data.blocking_read().clone())
+    }
+
     pub async fn set_prompt(&mut self, prompt: String) {
-        self.complete.write().await.prompt = prompt;
+        self.data.write().await.prompt = prompt;
     }
     pub async fn generate(&self) -> Result<String, anyhow::Error> {
         let mut stream = self.complete().await?;
-        *self.pending_generate.write().await = Some(self.complete.read().await.prompt.clone());
+        *self.pending_generate.write().await = Some(self.data.read().await.prompt.clone());
         while let Some(res) = stream.next().await {
             let res = match res {
                 Ok(s) => s,
@@ -90,17 +95,17 @@ impl CompleteAPI {
         let Some(text) = self.pending_generate.write().await.take()  else {
             return Err(anyhow::anyhow!("No text generated"));
         };
-        let text = if let Some(suffix) = &self.complete.write().await.suffix.take() {
+        let text = if let Some(suffix) = &self.data.write().await.suffix.take() {
             format!("{}{}", text, suffix)
         } else {
             text
         };
-        self.complete.write().await.prompt = text.clone();
+        self.data.write().await.prompt = text.clone();
         Ok(text)
     }
     pub async fn insert(&self, index: usize) -> Result<String, anyhow::Error> {
         {
-            let mut complete = self.complete.write().await;
+            let mut complete = self.data.write().await;
             let prompt = complete.prompt.clone();
             let (prompt, suffix) = split_by_char(&prompt, index);
             complete.prompt = prompt.to_string();
@@ -116,7 +121,7 @@ impl CompleteAPI {
         &self,
     ) -> Result<impl Stream<Item = Result<CompleteCompletion, anyhow::Error>>, anyhow::Error> {
         let uri: Uri = Self::URL.parse()?;
-        let body = Body::from(serde_json::to_string(&self.complete.write().await.clone())?);
+        let body = Body::from(serde_json::to_string(&self.data.write().await.clone())?);
         let mut request_body = Request::new(body);
         *request_body.method_mut() = hyper::Method::POST;
         *request_body.uri_mut() = uri.clone();
@@ -156,13 +161,13 @@ impl CompleteAPIBuilder {
         };
         Self { api_key, complete }
     }
-    pub fn with_complete(mut self, complete: Complete) -> Self {
+    pub fn with_data(mut self, complete: Complete) -> Self {
         self.complete = complete;
         self
     }
     pub fn build(self) -> CompleteAPI {
         CompleteAPI {
-            complete: Arc::new(RwLock::new(self.complete)),
+            data: Arc::new(RwLock::new(self.complete)),
             pending_generate: Arc::new(RwLock::new(None)),
             api_key: Arc::new(RwLock::new(self.api_key)),
             client: Arc::new(MultiClient::new()),
@@ -205,16 +210,16 @@ impl ParameterControl for CompleteAPI {
             range: Some((1, 4000).into()),
             default: 2048.into(),
             store: RefCell::new(tokio::task::block_in_place(|| {
-                self.complete.blocking_read().max_tokens
+                self.data.blocking_read().max_tokens
             })),
             getter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move || {
                     tokio::task::block_in_place(|| complete.blocking_read().max_tokens)
                 })
             },
             setter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move |max_tokens| {
                     let complete = complete.clone();
                     tokio::spawn(async move {
@@ -229,7 +234,7 @@ impl ParameterControl for CompleteAPI {
             default: (0.3).into(),
             store: RefCell::new(0.3),
             getter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move || {
                     tokio::task::block_in_place(|| {
                         complete.blocking_read().temperature.unwrap_or(0.3)
@@ -237,7 +242,7 @@ impl ParameterControl for CompleteAPI {
                 })
             },
             setter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move |temperature| {
                     let complete = complete.clone();
                     tokio::spawn(async move {
@@ -252,13 +257,13 @@ impl ParameterControl for CompleteAPI {
             default: (1.).into(),
             store: RefCell::new(1.),
             getter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move || {
                     tokio::task::block_in_place(|| complete.blocking_read().top_p.unwrap_or(1.))
                 })
             },
             setter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move |top_p| {
                     let complete = complete.clone();
                     tokio::spawn(async move {
@@ -273,7 +278,7 @@ impl ParameterControl for CompleteAPI {
             default: (0.).into(),
             store: RefCell::new(0.),
             getter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move || {
                     tokio::task::block_in_place(|| {
                         complete.blocking_read().presence_penalty.unwrap_or(0.)
@@ -281,7 +286,7 @@ impl ParameterControl for CompleteAPI {
                 })
             },
             setter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move |presence_penalty| {
                     let data = complete.clone();
                     tokio::spawn(async move {
@@ -296,7 +301,7 @@ impl ParameterControl for CompleteAPI {
             default: (0.).into(),
             store: RefCell::new(0.),
             getter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move || {
                     tokio::task::block_in_place(|| {
                         complete.blocking_read().frequency_penalty.unwrap_or(0.)
@@ -304,7 +309,7 @@ impl ParameterControl for CompleteAPI {
                 })
             },
             setter: {
-                let complete = self.complete.clone();
+                let complete = self.data.clone();
                 Box::new(move |frequency_penalty| {
                     let data = complete.clone();
                     tokio::spawn(async move {

@@ -3,7 +3,7 @@
 #![feature(fn_traits)]
 #![feature(specialization)]
 #![feature(panic_info_message)]
-
+#![feature(return_position_impl_trait_in_trait)]
 use eframe::egui;
 use std::error::Error;
 use std::{fs, io::Write, panic};
@@ -18,20 +18,10 @@ use ui::logger::Logger;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     panic::set_hook(Box::new(|panic_info| {
+        eprintln!("{panic_info}");
         if let Ok(f) = fs::File::create("panic.log") {
             let mut f = std::io::BufWriter::new(f);
-            if let Some(name) = std::thread::current().name() {
-                let _ = writeln!(f, "thread: {}", name);
-            }
-            if let Some(location) = panic_info.location() {
-                let _ = writeln!(f, "location: {}", location);
-            }
-            if let Some(backtrace) = panic_info.message() {
-                let _ = writeln!(f, "backtrace: {}", backtrace);
-            }
-            if let Some(payload) = panic_info.payload().downcast_ref::<&str>() {
-                let _ = writeln!(f, "payload: {}", payload);
-            }
+            writeln!(f, "{panic_info}").ok();
         }
     }));
 

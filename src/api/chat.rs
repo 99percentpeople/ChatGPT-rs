@@ -2,6 +2,7 @@ use hyper::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use hyper::{Body, Request, Uri};
 use serde::{Deserialize, Serialize};
 use strum::Display;
+use tokio::task;
 use tracing::instrument;
 
 use crate::client::fetch_sse;
@@ -156,7 +157,7 @@ impl ChatAPIBuilder {
             api_key,
         }
     }
-    pub fn with_chat(mut self, chat: Chat) -> Self {
+    pub fn with_data(mut self, chat: Chat) -> Self {
         self.chat = chat;
         self
     }
@@ -175,6 +176,9 @@ impl ChatAPI {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
     const DEFAULT_MODEL: &'static str = "gpt-3.5-turbo";
 
+    pub fn data(&self) -> Chat {
+        task::block_in_place(|| self.data.blocking_read().clone())
+    }
     pub async fn set_model(&mut self, model: String) {
         self.data.write().await.model = model;
     }

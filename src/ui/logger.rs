@@ -248,8 +248,8 @@ impl super::Window for LoggerUi {
 }
 
 impl super::View for LoggerUi {
-    type Response<'a> = ();
-    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
+    type Response = ();
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response {
         egui::TopBottomPanel::top("log_top").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Search: ");

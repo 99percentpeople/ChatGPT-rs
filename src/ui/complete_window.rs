@@ -3,7 +3,7 @@ use tokio::task::JoinHandle;
 
 use crate::api::{complete::CompleteAPI, ParameterControl};
 
-use super::{easy_mark, parameter_control::ParameterControler, MainWindow, View};
+use super::{easy_mark, parameter_control::ParameterControler, TabWindow, View};
 pub struct CompleteWindow {
     window_name: String,
     complete: CompleteAPI,
@@ -21,7 +21,7 @@ impl CompleteWindow {
         let parameter_control = ParameterControler::new(complete.params());
         Self {
             window_name,
-            text: tokio::task::block_in_place(|| complete.complete.blocking_read().prompt.clone()),
+            text: tokio::task::block_in_place(|| complete.data.blocking_read().prompt.clone()),
             complete,
             parameter_control,
             show_parameter_control: false,
@@ -31,14 +31,43 @@ impl CompleteWindow {
             cursor_index: None,
         }
     }
+
+    fn on_insert(&mut self, cursor_index: usize) {
+        let complete = self.complete.clone();
+        self.promise = Some(tokio::spawn(async move {
+            match complete.insert(cursor_index).await {
+                Ok(res) => Ok(res),
+                Err(e) => {
+                    tracing::error!("{}", e);
+                    Err(e)
+                }
+            }
+        }));
+    }
+
+    fn on_complete(&mut self) {
+        let complete = self.complete.clone();
+        self.promise = Some(tokio::spawn(async move {
+            match complete.generate().await {
+                Ok(res) => Ok(res),
+                Err(e) => {
+                    tracing::error!("{}", e);
+                    Err(e)
+                }
+            }
+        }));
+    }
 }
 
-impl MainWindow for CompleteWindow {
+impl TabWindow for CompleteWindow {
+    fn set_name(&mut self, name: String) {
+        self.window_name = name;
+    }
     fn name(&self) -> &str {
         &self.window_name
     }
 
-    fn show(&mut self, ctx: &eframe::egui::Context) {
+    fn show(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.ui(ui);
         });
@@ -54,8 +83,8 @@ impl MainWindow for CompleteWindow {
 }
 
 impl View for CompleteWindow {
-    type Response<'a> = ();
-    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
+    type Response = ();
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response {
         let generate =
             tokio::task::block_in_place(|| self.complete.pending_generate.blocking_read().clone());
 
@@ -65,9 +94,9 @@ impl View for CompleteWindow {
         }
         if let Some(generate) = generate {
             self.text = generate;
-            if let Some(suffix) = tokio::task::block_in_place(|| {
-                self.complete.complete.blocking_read().suffix.clone()
-            }) {
+            if let Some(suffix) =
+                tokio::task::block_in_place(|| self.complete.data.blocking_read().suffix.clone())
+            {
                 self.text.push_str(&suffix);
             }
         }
@@ -82,7 +111,7 @@ impl View for CompleteWindow {
                 self.text = text.clone();
             }
         }
-        egui::TopBottomPanel::top("complete_top").show_inside(ui, |ui| {
+        egui::TopBottomPanel::top(format!("top_{}", self.name())).show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading(&self.window_name);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -90,38 +119,20 @@ impl View for CompleteWindow {
                 });
             });
         });
-        egui::TopBottomPanel::bottom("complete_bottom").show_inside(ui, |ui| {
+        egui::TopBottomPanel::bottom(format!("bottom_{}", self.name())).show_inside(ui, |ui| {
             ui.add_space(5.);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_enabled_ui(is_ready, |ui| {
                     ui.add_sized([50., 40.], egui::Button::new("Complete"))
                         .clicked()
                         .then(|| {
-                            let complete = self.complete.clone();
-                            self.promise = Some(tokio::spawn(async move {
-                                match complete.generate().await {
-                                    Ok(res) => Ok(res),
-                                    Err(e) => {
-                                        tracing::error!("{}", e);
-                                        Err(e)
-                                    }
-                                }
-                            }));
+                            self.on_complete();
                         });
                     if let Some(cursor_index) = self.cursor_index {
                         ui.add_sized([50., 40.], egui::Button::new("Insert"))
                             .clicked()
                             .then(|| {
-                                let complete = self.complete.clone();
-                                self.promise = Some(tokio::spawn(async move {
-                                    match complete.insert(cursor_index).await {
-                                        Ok(res) => Ok(res),
-                                        Err(e) => {
-                                            tracing::error!("{}", e);
-                                            Err(e)
-                                        }
-                                    }
-                                }));
+                                self.on_insert(cursor_index);
                             });
                     }
                 });
@@ -144,7 +155,7 @@ impl View for CompleteWindow {
                 }
             });
         });
-        egui::SidePanel::right("complete_right").show_animated_inside(
+        egui::SidePanel::right(format!("right_{}", self.name())).show_animated_inside(
             ui,
             self.show_parameter_control,
             |ui| {
@@ -157,6 +168,8 @@ impl View for CompleteWindow {
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     ui.add_enabled_ui(is_ready, |ui| {
+                        ui.visuals_mut().widgets.hovered = ui.visuals().widgets.inactive;
+
                         let response = if self.enable_markdown {
                             let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
                                 let mut layout_job = self.highlighter.highlight(ui, easymark);

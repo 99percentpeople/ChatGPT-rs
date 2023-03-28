@@ -2,16 +2,19 @@ mod chat_window;
 mod complete_window;
 mod components;
 mod easy_mark;
+mod list_view;
 pub mod logger;
 mod model_table;
 mod parameter_control;
-mod session_list;
 
-use self::{logger::LoggerUi, session_list::SessionList};
+use std::{cell::RefCell, rc::Rc};
+
+use self::{list_view::ListView, logger::LoggerUi};
 use eframe::{
     egui::{self, TextStyle},
     epaint::{FontFamily, FontId},
 };
+use egui_dock::Node;
 use font_kit::{
     family_name::FamilyName,
     properties::{Properties, Weight},
@@ -28,10 +31,10 @@ pub enum ModelType {
 }
 
 pub struct ChatApp {
-    window: Option<Box<dyn MainWindow>>,
-    chat_list: SessionList,
-    widgets: Vec<(Box<dyn Window>, bool)>,
-
+    list_view: ListView,
+    widgets: Vec<(Box<dyn Window<Response = ()>>, bool)>,
+    tree: egui_dock::Tree<String>,
+    // buffers: BTreeMap<String, &dyn MainWindow>,
     expand_list: bool,
 }
 impl ChatApp {
@@ -48,44 +51,19 @@ impl ChatApp {
     pub fn new(cc: &eframe::CreationContext) -> Self {
         setup_fonts(&cc.egui_ctx);
         let mut widgets = Vec::new();
-        let mut chat_list = SessionList::default();
+        let mut list_view = ListView::default();
 
-        let mut style = (*cc.egui_ctx.style()).clone();
-        style.text_styles.insert(
-            TextStyle::Name("Heading1".into()),
-            FontId::new(36.0, FontFamily::Proportional),
-        );
-        style.text_styles.insert(
-            TextStyle::Name("Heading2".into()),
-            FontId::new(24.0, FontFamily::Proportional),
-        );
-        style.text_styles.insert(
-            TextStyle::Name("Heading3".into()),
-            FontId::new(21.0, FontFamily::Proportional),
-        );
-        style.text_styles.insert(
-            TextStyle::Name("Heading4".into()),
-            FontId::new(18.0, FontFamily::Proportional),
-        );
-        style.text_styles.insert(
-            TextStyle::Name("Heading5".into()),
-            FontId::new(16.0, FontFamily::Proportional),
-        );
-        style.text_styles.insert(
-            TextStyle::Name("Heading6".into()),
-            FontId::new(14.0, FontFamily::Proportional),
-        );
-        cc.egui_ctx.set_style(style);
-        chat_list.load().ok();
+        list_view.load("./chats.json").ok();
         widgets.push((
-            Box::new(LoggerUi::default()) as Box<dyn Window>,
+            Box::new(LoggerUi::default()) as Box<dyn Window<Response = ()>>,
             Self::DEBUG,
         ));
         Self {
-            window: None,
-            chat_list,
+            list_view,
             widgets,
             expand_list: true,
+            // buffers: BTreeMap::new(),
+            tree: egui_dock::Tree::default(),
         }
     }
 }
@@ -94,14 +72,30 @@ impl eframe::App for ChatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
+                ui.menu_button("File", |ui| {
+                    ui.button("Load").clicked().then(|| {
+                        if let Err(e) = self.list_view.load("./chats.json") {
+                            tracing::error!("{}", e);
+                        }
+                        ui.close_menu();
+                    });
+                    ui.button("Save").clicked().then(|| {
+                        if let Err(e) = self.list_view.save("./chats.json") {
+                            tracing::error!("{}", e);
+                        }
+                        ui.close_menu();
+                    });
+                });
                 if ui.selectable_label(self.expand_list, "List").clicked() {
                     self.expand_list = !self.expand_list;
                 };
 
                 ui.separator();
-                if let Some(window) = &mut self.window {
-                    window.actions(ui);
+
+                if let Some((_, tab)) = self.tree.find_active_focused() {
+                    self.list_view.action(tab, ui);
                 }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     egui::global_dark_light_mode_switch(ui);
                     ui.separator();
@@ -117,40 +111,89 @@ impl eframe::App for ChatApp {
         self.widgets
             .iter_mut()
             .for_each(|(view, show)| view.show(ctx, show));
+
         egui::SidePanel::left("left_chat_panel").show_animated(ctx, self.expand_list, |ui| {
-            match self.chat_list.ui(ui) {
-                session_list::ResponseEvent::Select(chat) => {
-                    self.window = Some(chat);
+            match self.list_view.ui(ui) {
+                list_view::ResponseEvent::Select(label) => {
+                    if let Some(index) = self.tree.find_tab(&label) {
+                        self.tree.set_focused_node(index.0)
+                    } else {
+                        self.tree.push_to_focused_leaf(label)
+                    }
                 }
-                session_list::ResponseEvent::Remove => {
-                    self.window = None;
+                list_view::ResponseEvent::Remove(label) => {
+                    if let Some(index) = self.tree.find_tab(&label) {
+                        self.tree.remove_tab(index);
+                    }
                 }
-                session_list::ResponseEvent::None => {}
+                list_view::ResponseEvent::Rename(from, to) => {
+                    if let Some(index) = self.tree.find_tab(&from) {
+                        self.tree.remove_tab(index);
+                        self.tree.remove_empty_leaf();
+                        self.tree.push_to_first_leaf(to.clone());
+                    }
+                }
+                list_view::ResponseEvent::None => {}
             }
         });
-        if let Some(window) = &mut self.window {
-            window.show(ctx);
-        } else {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.heading("Select a chat to start");
-                    ui.button("Create Chat")
-                        .on_hover_text("Create a new chat")
-                        .clicked()
-                        .then(|| {
-                            self.window = Some(self.chat_list.new_chat(None).unwrap());
-                        });
-                });
-            });
-        }
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let mut style = egui_dock::Style::from_egui(&ui.style());
+            style.tab_include_scrollarea = false;
+            egui_dock::DockArea::new(&mut self.tree)
+                .style(style)
+                .show_inside(ui, &mut self.list_view);
+        });
     }
 }
 
+pub trait TabWindow: View {
+    fn set_name(&mut self, name: String);
+    fn name(&self) -> &str;
+    fn show(&mut self, ctx: &egui::Context);
+    fn actions(&mut self, _ui: &mut egui::Ui) {}
+}
+
+pub trait Window: View {
+    fn name(&self) -> &str;
+    fn show(&mut self, ctx: &egui::Context, open: &mut bool);
+}
+
+pub trait View {
+    type Response;
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response;
+}
+
 fn setup_fonts(ctx: &egui::Context) {
-    // Start with the default fonts (we will be adding to them rather than replacing them).
+    let mut style = (*ctx.style()).clone();
+    style.text_styles.insert(
+        TextStyle::Name("Heading1".into()),
+        FontId::new(36.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Name("Heading2".into()),
+        FontId::new(24.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Name("Heading3".into()),
+        FontId::new(21.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Name("Heading4".into()),
+        FontId::new(18.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Name("Heading5".into()),
+        FontId::new(16.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Name("Heading6".into()),
+        FontId::new(14.0, FontFamily::Proportional),
+    );
+    ctx.set_style(style);
+
     let mut fonts = egui::FontDefinitions::default();
     let source = SystemSource::new();
-    let data = if let Ok(font) = source.select_best_match(
+    let prop = if let Ok(font) = source.select_best_match(
         &[
             FamilyName::Title("微软雅黑".to_owned()),
             FamilyName::SansSerif,
@@ -176,12 +219,12 @@ fn setup_fonts(ctx: &egui::Context) {
 
     fonts
         .font_data
-        .insert("system".to_owned(), egui::FontData::from_static(data));
+        .insert("prop".to_owned(), egui::FontData::from_static(prop));
     fonts
         .families
         .entry(FontFamily::Proportional)
         .or_default()
-        .insert(0, "system".to_owned());
+        .insert(0, "prop".to_owned());
 
     let mono = if let Ok(font) = source.select_best_match(
         &[
@@ -218,22 +261,4 @@ fn setup_fonts(ctx: &egui::Context) {
         .or_default()
         .insert(0, "mono".to_owned());
     ctx.set_fonts(fonts);
-}
-
-pub trait MainWindow {
-    fn name(&self) -> &str;
-    fn show(&mut self, ctx: &egui::Context);
-    fn actions(&mut self, _ui: &mut egui::Ui) {}
-}
-
-pub trait Window {
-    fn name(&self) -> &str;
-    fn show(&mut self, ctx: &egui::Context, open: &mut bool);
-}
-
-pub trait View {
-    type Response<'a>
-    where
-        Self: 'a;
-    fn ui<'a>(&'a mut self, ui: &mut egui::Ui) -> Self::Response<'a>;
 }

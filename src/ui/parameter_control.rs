@@ -18,8 +18,8 @@ impl ParameterControler {
 }
 
 impl super::View for ParameterControler {
-    type Response<'a> = ResponseEvent;
-    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
+    type Response = ResponseEvent;
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response {
         let event = ResponseEvent::None;
         let params: Vec<_> = self.params.iter().map(|a| (a, a.get())).collect();
         egui::Grid::new("grid")

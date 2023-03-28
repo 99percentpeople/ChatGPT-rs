@@ -27,9 +27,9 @@ impl ModelTable {
 }
 
 impl super::View for ModelTable {
-    type Response<'a> = ResponseEvent;
+    type Response = ResponseEvent;
 
-    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response<'_> {
+    fn ui(&mut self, ui: &mut egui::Ui) -> Self::Response {
         let mut event = ResponseEvent::None;
         // let models = block_in_place(|| self.models.models.blocking_read().clone());
         let is_ready = self.models.is_ready.load(atomic::Ordering::Relaxed);
