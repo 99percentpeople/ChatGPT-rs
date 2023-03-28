@@ -7,14 +7,12 @@ pub mod logger;
 mod model_table;
 mod parameter_control;
 
-use std::{cell::RefCell, rc::Rc};
-
 use self::{list_view::ListView, logger::LoggerUi};
 use eframe::{
     egui::{self, TextStyle},
     epaint::{FontFamily, FontId},
 };
-use egui_dock::Node;
+
 use font_kit::{
     family_name::FamilyName,
     properties::{Properties, Weight},

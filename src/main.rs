@@ -2,8 +2,7 @@
 #![feature(is_some_and)]
 #![feature(fn_traits)]
 #![feature(specialization)]
-#![feature(panic_info_message)]
-#![feature(return_position_impl_trait_in_trait)]
+
 use eframe::egui;
 use std::error::Error;
 use std::{fs, io::Write, panic};

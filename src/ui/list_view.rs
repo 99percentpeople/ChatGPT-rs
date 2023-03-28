@@ -1,10 +1,8 @@
 use derive_more::From;
-use eframe::egui::{self, Widget};
+use eframe::egui;
 use std::{
-    cell::RefCell,
     collections::{BTreeSet, HashMap},
-    path::{Path, PathBuf},
-    rc::Rc,
+    path::Path,
 };
 
 use strum::IntoEnumIterator;
