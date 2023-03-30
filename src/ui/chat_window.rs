@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 
 use super::{
     easy_mark, model_table::ModelTable, parameter_control::ParameterControler, ModelType,
-    TabWindow, View,
+    TabWindow, View, Window,
 };
 
 pub struct ChatWindow {
@@ -56,19 +56,22 @@ impl ChatWindow {
     }
 }
 
+impl super::Window for ChatWindow {
+    fn name(&self) -> &str {
+        &self.window_name
+    }
+    fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.ui(ui);
+        });
+    }
+}
+
 impl super::TabWindow for ChatWindow {
     fn set_name(&mut self, name: String) {
         self.window_name = name;
     }
 
-    fn name(&self) -> &str {
-        &self.window_name
-    }
-    fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.ui(ui);
-        });
-    }
     fn actions(&mut self, ui: &mut egui::Ui) {
         ui.selectable_label(self.show_model_table, "Model")
             .clicked()

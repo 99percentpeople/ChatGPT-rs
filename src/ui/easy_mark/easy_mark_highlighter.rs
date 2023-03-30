@@ -157,10 +157,27 @@ pub fn highlight_easymark(
                 skip = 0;
             }
             style.italics ^= true;
+        } else if text.starts_with('~') {
+            skip = 1;
+            if style.strikethrough {
+                // Include the character that is ending this style:
+                job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
+                text = &text[skip..];
+                skip = 0;
+            }
+            style.strikethrough ^= true;
+        } else if text.starts_with('_') {
+            skip = 1;
+            if style.underline {
+                // Include the character that is ending this style:
+                job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
+                text = &text[skip..];
+                skip = 0;
+            }
+            style.underline ^= true;
         } else {
             skip = 0;
         }
-        // Note: we don't preview underline, strikethrough and italics because it confuses things.
 
         // Swallow everything up to the next special character:
         let line_end = text[skip..]

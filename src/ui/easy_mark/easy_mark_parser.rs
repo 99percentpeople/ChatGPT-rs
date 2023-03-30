@@ -58,7 +58,7 @@ pub struct Style {
     /// ~strikethrough~
     pub strikethrough: bool,
 
-    /// /italics/
+    /// *italics*
     pub italics: bool,
 
     /// $small$

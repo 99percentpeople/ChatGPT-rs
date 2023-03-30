@@ -183,6 +183,7 @@ impl ListView {
             HashMap::new()
         };
         self.views.clear();
+        self.selected.clear();
         for (name, chat) in chats {
             let chat = ChatAPIBuilder::new(api_key.clone()).with_data(chat).build();
             self.views.push(ViewContext::new(name, APIImpl::Chat(chat)));
@@ -342,6 +343,10 @@ impl egui_dock::TabViewer for ListView {
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> bool {
-        self.selected.remove(tab)
+        self.selected.remove(tab);
+        false
+    }
+    fn force_close(&mut self, _tab: &mut Self::Tab) -> bool {
+        !self.selected.contains(_tab)
     }
 }

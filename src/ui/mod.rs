@@ -9,7 +9,7 @@ mod parameter_control;
 
 use self::{list_view::ListView, logger::LoggerUi};
 use eframe::{
-    egui::{self, TextStyle},
+    egui,
     epaint::{FontFamily, FontId},
 };
 
@@ -32,7 +32,7 @@ pub struct ChatApp {
     list_view: ListView,
     widgets: Vec<(Box<dyn Window<Response = ()>>, bool)>,
     tree: egui_dock::Tree<String>,
-    // buffers: BTreeMap<String, &dyn MainWindow>,
+
     expand_list: bool,
 }
 impl ChatApp {
@@ -60,7 +60,6 @@ impl ChatApp {
             list_view,
             widgets,
             expand_list: true,
-            // buffers: BTreeMap::new(),
             tree: egui_dock::Tree::default(),
         }
     }
@@ -68,7 +67,26 @@ impl ChatApp {
 
 impl eframe::App for ChatApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let open = ctx.input(|i| i.raw.hovered_files.first().map(|f| f.clone()));
+
+        select_popup(ctx, &open.is_some(), "Select");
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            let path = ui.input(|i| {
+                if let Some(f) = i.raw.dropped_files.first() {
+                    if let Some(path) = &f.path {
+                        return Some(path.clone());
+                    }
+                }
+                None
+            });
+            if let Some(path) = path {
+                if let Err(e) = self.list_view.load(&path) {
+                    tracing::error!("{}", e);
+                }
+            } else {
+            }
+
             ui.horizontal(|ui| {
                 ui.menu_button("File", |ui| {
                     ui.button("Load").clicked().then(|| {
@@ -114,7 +132,7 @@ impl eframe::App for ChatApp {
             match self.list_view.ui(ui) {
                 list_view::ResponseEvent::Select(label) => {
                     if let Some(index) = self.tree.find_tab(&label) {
-                        self.tree.set_focused_node(index.0)
+                        self.tree.set_active_tab(index.0, index.1)
                     } else {
                         self.tree.push_to_focused_leaf(label)
                     }
@@ -127,7 +145,6 @@ impl eframe::App for ChatApp {
                 list_view::ResponseEvent::Rename(from, to) => {
                     if let Some(index) = self.tree.find_tab(&from) {
                         self.tree.remove_tab(index);
-                        self.tree.remove_empty_leaf();
                         self.tree.push_to_first_leaf(to.clone());
                     }
                 }
@@ -144,10 +161,35 @@ impl eframe::App for ChatApp {
     }
 }
 
-pub trait TabWindow: View {
+fn select_popup(ctx: &egui::Context, open: &bool, text: impl Into<egui::WidgetText>) {
+    egui::Area::new("select_popup")
+        .fixed_pos([0., 0.])
+        .order(egui::Order::Tooltip)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let rect = ui.input(|ui| ui.screen_rect());
+            let response = ui.allocate_rect(rect, egui::Sense::hover());
+
+            let how_on = ui.ctx().animate_bool(response.id, *open);
+            let color = ui
+                .visuals()
+                .window_fill()
+                .clone()
+                .gamma_multiply(how_on * 0.5);
+
+            if *open && ui.is_rect_visible(rect) {
+                let text: egui::WidgetText = text.into();
+                let galley = text.into_galley(ui, None, f32::INFINITY, egui::TextStyle::Heading);
+                let painter = ui.painter();
+                painter.rect_filled(rect, egui::Rounding::none(), color);
+                let pos = rect.center() - galley.size() / 2.0;
+                galley.paint_with_fallback_color(painter, pos, ui.visuals().text_color());
+            }
+        });
+}
+
+pub trait TabWindow: Window {
     fn set_name(&mut self, name: String);
-    fn name(&self) -> &str;
-    fn show(&mut self, ctx: &egui::Context);
     fn actions(&mut self, _ui: &mut egui::Ui) {}
 }
 
@@ -164,27 +206,27 @@ pub trait View {
 fn setup_fonts(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
     style.text_styles.insert(
-        TextStyle::Name("Heading1".into()),
+        egui::TextStyle::Name("Heading1".into()),
         FontId::new(36.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
-        TextStyle::Name("Heading2".into()),
+        egui::TextStyle::Name("Heading2".into()),
         FontId::new(24.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
-        TextStyle::Name("Heading3".into()),
+        egui::TextStyle::Name("Heading3".into()),
         FontId::new(21.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
-        TextStyle::Name("Heading4".into()),
+        egui::TextStyle::Name("Heading4".into()),
         FontId::new(18.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
-        TextStyle::Name("Heading5".into()),
+        egui::TextStyle::Name("Heading5".into()),
         FontId::new(16.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
-        TextStyle::Name("Heading6".into()),
+        egui::TextStyle::Name("Heading6".into()),
         FontId::new(14.0, FontFamily::Proportional),
     );
     ctx.set_style(style);

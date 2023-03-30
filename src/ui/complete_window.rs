@@ -3,7 +3,7 @@ use tokio::task::JoinHandle;
 
 use crate::api::{complete::CompleteAPI, ParameterControl};
 
-use super::{easy_mark, parameter_control::ParameterControler, TabWindow, View};
+use super::{easy_mark, parameter_control::ParameterControler, TabWindow, View, Window};
 pub struct CompleteWindow {
     window_name: String,
     complete: CompleteAPI,
@@ -58,19 +58,20 @@ impl CompleteWindow {
         }));
     }
 }
-
-impl TabWindow for CompleteWindow {
-    fn set_name(&mut self, name: String) {
-        self.window_name = name;
-    }
+impl super::Window for CompleteWindow {
     fn name(&self) -> &str {
         &self.window_name
     }
 
-    fn show(&mut self, ctx: &egui::Context) {
+    fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.ui(ui);
         });
+    }
+}
+impl TabWindow for CompleteWindow {
+    fn set_name(&mut self, name: String) {
+        self.window_name = name;
     }
 
     fn actions(&mut self, ui: &mut egui::Ui) {

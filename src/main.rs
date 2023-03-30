@@ -33,6 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(1024.0, 768.0)),
         follow_system_theme: true,
+        drag_and_drop_support: true,
         ..Default::default()
     };
     local.spawn_local(async move {
