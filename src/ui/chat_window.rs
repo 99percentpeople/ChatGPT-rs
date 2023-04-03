@@ -1,20 +1,23 @@
+use super::{
+    easy_mark::{self, MemoizedEasymarkHighlighter},
+    model_table::ModelTable,
+    parameter_control::ParameterControler,
+    ModelType, View, Window,
+};
 use crate::api::{
     chat::{ChatAPI, Role},
     ParameterControl,
 };
+
 use eframe::egui::{self, Modifiers};
 use egui_notify::Toasts;
 use std::{
     cell::RefCell,
+    ops::AddAssign,
     rc::Rc,
     sync::{atomic, Arc},
 };
 use tokio::task::JoinHandle;
-
-use super::{
-    easy_mark, model_table::ModelTable, parameter_control::ParameterControler, ModelType,
-    TabWindow, View, Window,
-};
 
 pub struct ChatWindow {
     window_name: String,
@@ -27,7 +30,7 @@ pub struct ChatWindow {
     model_table: ModelTable,
     parameter_control: ParameterControler,
     toasts: Toasts,
-    highlighter: Rc<RefCell<easy_mark::MemoizedEasymarkHighlighter>>,
+    highlighters: Vec<Rc<RefCell<easy_mark::MemoizedEasymarkHighlighter>>>,
     enable_markdown: bool,
     edit_focused: bool,
 }
@@ -47,9 +50,8 @@ impl ChatWindow {
             show_parameter_control: false,
             parameter_control,
             toasts: Toasts::default(),
-            highlighter: Rc::new(RefCell::new(
-                easy_mark::MemoizedEasymarkHighlighter::default(),
-            )),
+            highlighters: Vec::new(),
+
             enable_markdown: true,
             edit_focused: false,
         }
@@ -60,7 +62,7 @@ impl super::Window for ChatWindow {
     fn name(&self) -> &str {
         &self.window_name
     }
-    fn show(&mut self, ctx: &egui::Context, open: &mut bool) {
+    fn show(&mut self, ctx: &egui::Context, _open: &mut bool) {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.ui(ui);
         });
@@ -87,9 +89,13 @@ impl super::TabWindow for ChatWindow {
 }
 
 impl ChatWindow {
-    fn selectable_text(&self, ui: &mut egui::Ui, mut text: &str) {
+    fn selectable_text(&mut self, ui: &mut egui::Ui, mut text: &str, idx: &mut usize) {
         if self.enable_markdown {
-            let highlighter = self.highlighter.clone();
+            let highlighter = self.highlighters.get(*idx).cloned().unwrap_or_else(|| {
+                let highlighter = Rc::new(RefCell::new(MemoizedEasymarkHighlighter::default()));
+                self.highlighters.push(highlighter.clone());
+                highlighter
+            });
             let mut layouter = |ui: &egui::Ui, easymark: &str, wrap_width: f32| {
                 let mut layout_job = highlighter.borrow_mut().highlight(ui, easymark);
                 layout_job.wrap.max_width = wrap_width;
@@ -113,6 +119,7 @@ impl ChatWindow {
                 ui.close_menu();
             });
         });
+        idx.add_assign(1);
     }
 }
 
@@ -256,30 +263,30 @@ impl super::View for ChatWindow {
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        for msg in chat.messages {
+                        let mut idx = 0;
+                        for msg in chat.messages.iter() {
                             message(
                                 ui,
                                 |ui| {
-                                    let content = msg.content.to_string();
-                                    self.selectable_text(ui, &content);
+                                    self.selectable_text(ui, &msg.content, &mut idx);
                                 },
                                 &msg.role,
                             );
                         }
+
                         if let Some(generate) = &generate_text {
-                            {
-                                message(
-                                    ui,
-                                    |ui| self.selectable_text(ui, &generate),
-                                    &Role::Assistant,
-                                );
-                            }
+                            message(
+                                ui,
+                                |ui| self.selectable_text(ui, &generate, &mut idx),
+                                &Role::Assistant,
+                            );
+
                             ui.ctx().request_repaint();
                         } else if is_error {
                             message(
                                 ui,
                                 |ui| {
-                                    self.selectable_text(ui, &generate_text.unwrap());
+                                    self.selectable_text(ui, &generate_text.unwrap(), &mut idx);
                                     ui.button("Retry")
                                 },
                                 &Role::Assistant,
@@ -297,6 +304,9 @@ impl super::View for ChatWindow {
                                 },
                                 &Role::Assistant,
                             );
+                        }
+                        if idx + 1 < self.highlighters.len() {
+                            self.highlighters.pop();
                         }
                     });
                 });

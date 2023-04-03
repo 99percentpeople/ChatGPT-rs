@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use super::easy_mark_parser;
 use super::syntax_highlighting;
 use eframe::egui;
@@ -17,10 +19,10 @@ impl MemoizedEasymarkHighlighter {
         let egui_style: &egui::Style = ui.style();
         if (&self.style, self.code.as_str()) != (egui_style, code) {
             self.style = egui_style.clone();
-            self.code = code.to_owned();
+            self.code = code.to_string();
             self.output = highlight_easymark(ui.ctx(), egui_style, code);
         }
-        self.output.clone()
+        self.output.to_owned()
     }
 }
 

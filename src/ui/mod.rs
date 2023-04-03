@@ -153,6 +153,12 @@ impl eframe::App for ChatApp {
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             let mut style = egui_dock::Style::from_egui(&ui.style());
+            let r = ui.visuals().menu_rounding;
+            style.tab_rounding = egui::Rounding {
+                nw: r.nw,
+                ne: r.ne,
+                ..Default::default()
+            };
             style.tab_include_scrollarea = false;
             egui_dock::DockArea::new(&mut self.tree)
                 .style(style)
