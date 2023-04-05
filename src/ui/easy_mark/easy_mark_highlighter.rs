@@ -168,15 +168,16 @@ pub fn highlight_easymark(
                 skip = 0;
             }
             style.strikethrough ^= true;
-        } else if text.starts_with('_') {
-            skip = 1;
-            if style.underline {
-                // Include the character that is ending this style:
-                job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
-                text = &text[skip..];
-                skip = 0;
-            }
-            style.underline ^= true;
+        } else if text.starts_with("<u>") {
+            skip = 3;
+            style.underline = true;
+        } else if text.starts_with("</u>") && style.underline {
+            // Include the character that is ending this style:
+            skip = 4;
+            job.append(&text[..skip], 0.0, format_from_style(egui_style, &style));
+            text = &text[skip..];
+            style.underline = false;
+            skip = 0;
         } else {
             skip = 0;
         }
@@ -185,11 +186,15 @@ pub fn highlight_easymark(
         let line_end = text[skip..]
             .find('\n')
             .map_or_else(|| text.len(), |i| (skip + i + 1));
+
         // let end = text[skip..]
         //     .find(&['*', '`', '~', '_', '/', '$', '^', '\\', '<', '['][..])
         //     .map_or_else(|| text.len(), |i| (skip + i).max(1));
-        // // Swallow everything up to the next special character:
-        let special = ["**", "*", "`", "~", "_", "/", "$", "^", "\\", "<", "["];
+
+        // Swallow everything up to the next special character:
+        let special = [
+            "**", "*", "`", "~", "<u>", "</u>", "/", "$", "^", "\\", "<", "[",
+        ];
         let end = special
             .iter()
             .filter_map(|s| text.find(s))
